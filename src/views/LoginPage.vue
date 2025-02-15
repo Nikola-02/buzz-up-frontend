@@ -47,7 +47,7 @@
           </v-card-text>
           <v-card-actions class="justify-center">
             <span>Don't have an account?</span>
-            <v-btn variant="text" color="primary" @click="register">
+            <v-btn variant="text" color="primary" @click="redirectToRegister">
               Sign up
             </v-btn>
           </v-card-actions>
@@ -74,6 +74,10 @@ function login() {
     router.push("/dashboard");
   }, 2000);
 }
+
+const redirectToRegister = () => {
+  router.push("/signup");
+};
 </script>
 
 <style scoped>
