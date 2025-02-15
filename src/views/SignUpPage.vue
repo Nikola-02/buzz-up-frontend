@@ -13,6 +13,7 @@
                 v-model="user.firstName"
                 label="First Name"
                 prepend-icon="mdi-account"
+                :rules="[rules.required]"
                 required
                 outlined
               ></v-text-field>
@@ -21,6 +22,7 @@
                 v-model="user.lastName"
                 label="Last Name"
                 prepend-icon="mdi-account"
+                :rules="[rules.required]"
                 required
                 outlined
               ></v-text-field>
@@ -30,6 +32,7 @@
                 label="Email"
                 prepend-icon="mdi-email"
                 type="email"
+                :rules="[rules.required, rules.email]"
                 required
                 outlined
               ></v-text-field>
@@ -38,6 +41,7 @@
                 v-model="user.username"
                 label="Username"
                 prepend-icon="mdi-account"
+                :rules="[rules.required]"
                 required
                 outlined
               ></v-text-field>
@@ -46,6 +50,7 @@
                 v-model="user.password"
                 label="Password"
                 prepend-icon="mdi-lock"
+                :rules="[rules.required, rules.password]"
                 type="password"
                 required
                 outlined
@@ -101,7 +106,7 @@
 
           <v-card-actions class="justify-center">
             <span>Already have an account?</span>
-            <v-btn variant="text" color="primary" @click="goToLogin">
+            <v-btn variant="text" color="primary" @click="redirectToLogin">
               Login
             </v-btn>
           </v-card-actions>
@@ -109,14 +114,18 @@
       </v-col>
     </v-row>
   </v-container>
+  <snackbar-component :color="color" :show="show"></snackbar-component>
 </template>
 
 <script setup>
 import { ref } from "vue";
 import { useRouter } from "vue-router";
+import CryptoJS from "crypto-js";
 
 const router = useRouter();
 const loading = ref(false);
+const color = ref("");
+const showSnackbar = ref(false);
 
 const user = ref({
   username: "",
@@ -131,34 +140,58 @@ const user = ref({
   university: "",
 });
 
-async function register() {
+const rules = {
+  required: (v) => !!v || "Field is required",
+  email: (v) => /.+@.+\..+/.test(v) || "Invalid email format",
+  password: (v) =>
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(v) ||
+    "Password must have at least 8 characters, 1 uppercase, 1 lowercase, 1 number",
+};
+
+const register = async () => {
   loading.value = true;
+  const hashedPassword = CryptoJS.SHA256(user.value.password).toString();
 
-  // Simulacija poziva API-ju za registraciju
+  const newUser = {
+    username: user.value.username,
+    email: user.value.email,
+    firstName: user.value.firstName,
+    lastName: user.value.lastName,
+    password: hashedPassword,
+    image: user.value.image,
+    country: user.value.country || null,
+    city: user.value.city || null,
+    workplace: user.value.workplace || null,
+    university: user.value.university || null,
+  };
+
+  //   fetch("http://localhost:5001/api/users/register", {
+  //     method: "POST",
+  //     headers: { "Content-Type": "application/json" },
+  //     body: JSON.stringify(newUser),
+  //   })
+  //     .then(() => {
+  //       loading.value = false;
+  //       router.push("/login");
+  //     })
+  //     .catch((err) => {
+  //       console.error("Greška pri registraciji:", err);
+  //       loading.value = false;
+  //     });
+  color.value = "green";
+  showSnackbar.value = true;
+
   setTimeout(async () => {
-    const newUser = {
-      username: user.value.username,
-      email: user.value.email,
-      firstName: user.value.firstName,
-      lastName: user.value.lastName,
-      password: user.value.password,
-      image: user.value.image,
-      country: user.value.country || null,
-      city: user.value.city || null,
-      workplace: user.value.workplace || null,
-      university: user.value.university || null,
-    };
-
     console.log("User registered:", newUser);
     loading.value = false;
 
-    router.push("/login");
+    //router.push("/login");
   }, 2000);
-}
+};
 
-function goToLogin() {
+const redirectToLogin = () => {
   router.push("/login");
-}
+};
 </script>
 
 <style scoped>
