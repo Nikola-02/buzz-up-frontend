@@ -8,7 +8,7 @@
           </v-toolbar>
 
           <v-card-text>
-            <v-form @submit.prevent="register">
+            <v-form ref="form" @submit.prevent="register">
               <v-text-field
                 v-model="user.firstName"
                 label="First Name"
@@ -114,18 +114,26 @@
       </v-col>
     </v-row>
   </v-container>
-  <SnackbarComponent v-model:show="showSnackbar" :color="color" />
+  <SnackbarComponent
+    v-model:show="showSnackbar"
+    :color="snackbarColor"
+    :text="snackbarText"
+  />
 </template>
 
 <script setup>
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import CryptoJS from "crypto-js";
+import api, {
+  showSnackbar,
+  snackbarColor,
+  snackbarText,
+} from "@/plugins/axios";
 
 const router = useRouter();
 const loading = ref(false);
-const color = ref("");
-const showSnackbar = ref(false);
+const form = ref(null);
 
 const user = ref({
   username: "",
@@ -149,6 +157,9 @@ const rules = {
 };
 
 const register = async () => {
+  const { valid } = await form.value.validate();
+  if (!valid) return;
+
   loading.value = true;
   const hashedPassword = CryptoJS.SHA256(user.value.password).toString();
 
@@ -165,29 +176,14 @@ const register = async () => {
     university: user.value.university || null,
   };
 
-  //   fetch("http://localhost:5001/api/users/register", {
-  //     method: "POST",
-  //     headers: { "Content-Type": "application/json" },
-  //     body: JSON.stringify(newUser),
-  //   })
-  //     .then(() => {
-  //       loading.value = false;
-  //       router.push("/login");
-  //     })
-  //     .catch((err) => {
-  //       console.error("Greška pri registraciji:", err);
-  //       loading.value = false;
-  //     });
-  color.value = "green";
-  showSnackbar.value = true;
-  router.push("/login");
-
-  setTimeout(async () => {
-    console.log("User registered:", newUser);
+  try {
+    await api.post("/users/register", newUser);
+    router.push("/login");
+  } catch (error) {
+    console.error("Greška pri registraciji:", error);
+  } finally {
     loading.value = false;
-
-    //router.push("/login");
-  }, 2000);
+  }
 };
 
 const redirectToLogin = () => {
