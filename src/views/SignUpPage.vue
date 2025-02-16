@@ -114,7 +114,7 @@
       </v-col>
     </v-row>
   </v-container>
-  <snackbar-component :color="color" :show="show"></snackbar-component>
+  <SnackbarComponent v-model:show="showSnackbar" :color="color" />
 </template>
 
 <script setup>
@@ -180,6 +180,7 @@ const register = async () => {
   //     });
   color.value = "green";
   showSnackbar.value = true;
+  router.push("/login");
 
   setTimeout(async () => {
     console.log("User registered:", newUser);

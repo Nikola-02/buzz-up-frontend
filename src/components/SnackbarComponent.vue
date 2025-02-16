@@ -1,27 +1,34 @@
 <template>
-  <v-snackbar v-bind="snackbar" :color="props.color" timeout="2000">
+  <v-snackbar v-model="snackbar" :color="color" timeout="2000">
     Error while..
 
     <template v-slot:actions>
-      <v-btn color="white" variant="text" @click="snackbar = false">
-        Close
-      </v-btn>
+      <v-btn color="white" variant="text" @click="closeSnackbar"> Close </v-btn>
     </template>
   </v-snackbar>
 </template>
+
 <script setup>
-import { defineProps, ref } from "vue";
+import { defineProps, defineEmits, ref, watch } from "vue";
 
 const props = defineProps({
-  showSnackbar: {
-    type: Boolean,
-    default: false,
-  },
-  color: {
-    type: String,
-    default: "",
-  },
+  show: Boolean,
+  color: String,
 });
 
-const snackbar = ref(true);
+const emit = defineEmits(["update:show"]);
+
+const snackbar = ref(props.show);
+
+watch(
+  () => props.show,
+  (newVal) => {
+    snackbar.value = newVal;
+  }
+);
+
+const closeSnackbar = () => {
+  snackbar.value = false;
+  emit("update:show", false);
+};
 </script>
