@@ -7,7 +7,7 @@
             <v-toolbar-title class="text-h5">Sign Up</v-toolbar-title>
           </v-toolbar>
 
-          <v-card-text>
+          <v-card-text class="px-8">
             <v-form ref="form" @submit.prevent="register">
               <v-text-field
                 v-model="user.firstName"
@@ -15,7 +15,7 @@
                 prepend-icon="mdi-account"
                 :rules="[rules.required]"
                 required
-                outlined
+                density="compact"
               ></v-text-field>
 
               <v-text-field
@@ -24,7 +24,7 @@
                 prepend-icon="mdi-account"
                 :rules="[rules.required]"
                 required
-                outlined
+                density="compact"
               ></v-text-field>
 
               <v-text-field
@@ -35,6 +35,7 @@
                 :rules="[rules.required, rules.email]"
                 required
                 outlined
+                density="compact"
               ></v-text-field>
 
               <v-text-field
@@ -44,6 +45,7 @@
                 :rules="[rules.required]"
                 required
                 outlined
+                density="compact"
               ></v-text-field>
 
               <v-text-field
@@ -54,6 +56,7 @@
                 type="password"
                 required
                 outlined
+                density="compact"
               ></v-text-field>
 
               <v-file-input
@@ -62,6 +65,7 @@
                 prepend-icon="mdi-camera"
                 accept="image/*"
                 outlined
+                density="compact"
               ></v-file-input>
 
               <v-text-field
@@ -69,6 +73,7 @@
                 label="Country (Optional)"
                 prepend-icon="mdi-earth"
                 outlined
+                density="compact"
               ></v-text-field>
 
               <v-text-field
@@ -76,6 +81,7 @@
                 label="City (Optional)"
                 prepend-icon="mdi-city"
                 outlined
+                density="compact"
               ></v-text-field>
 
               <v-text-field
@@ -83,6 +89,7 @@
                 label="Workplace (Optional)"
                 prepend-icon="mdi-briefcase"
                 outlined
+                density="compact"
               ></v-text-field>
 
               <v-text-field
@@ -90,6 +97,7 @@
                 label="University (Optional)"
                 prepend-icon="mdi-school"
                 outlined
+                density="compact"
               ></v-text-field>
 
               <v-btn
@@ -125,11 +133,12 @@
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import CryptoJS from "crypto-js";
-import api, {
+import AxiosApi, {
   showSnackbar,
   snackbarColor,
   snackbarText,
 } from "@/plugins/axios";
+import { rules } from "@/plugins/validationMessages.js";
 
 const router = useRouter();
 const loading = ref(false);
@@ -147,14 +156,6 @@ const user = ref({
   workplace: "",
   university: "",
 });
-
-const rules = {
-  required: (v) => !!v || "Field is required",
-  email: (v) => /.+@.+\..+/.test(v) || "Invalid email format",
-  password: (v) =>
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(v) ||
-    "Password must have at least 8 characters, 1 uppercase, 1 lowercase, 1 number",
-};
 
 const register = async () => {
   const { valid } = await form.value.validate();
@@ -177,10 +178,10 @@ const register = async () => {
   };
 
   try {
-    await api.post("/users/register", newUser);
+    await AxiosApi.post("/users/register", newUser);
     router.push("/login");
   } catch (error) {
-    console.error("Greška pri registraciji:", error);
+    snackbarText.value = "Error while registering your account.";
   } finally {
     loading.value = false;
   }
