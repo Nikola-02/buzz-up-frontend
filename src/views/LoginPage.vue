@@ -16,20 +16,22 @@
             </v-toolbar-title>
           </v-toolbar>
           <v-card-text>
-            <v-form @submit.prevent="login">
+            <v-form ref="form" @submit.prevent="login">
               <v-text-field
-                v-model="username"
+                v-model="user.username"
                 label="Username"
                 prepend-icon="mdi-account"
+                :rules="[rules.required]"
                 required
                 outlined
               ></v-text-field>
 
               <v-text-field
-                v-model="password"
+                v-model="user.password"
                 label="Password"
                 prepend-icon="mdi-lock"
                 type="password"
+                :rules="[rules.required, rules.password]"
                 required
                 outlined
               ></v-text-field>
@@ -55,25 +57,62 @@
       </v-col>
     </v-row>
   </v-container>
+  <SnackbarComponent
+    v-model:show="showSnackbar"
+    :color="snackbarColor"
+    :text="snackbarText"
+  />
 </template>
 
 <script setup>
+import AxiosApi from "@/plugins/axios";
+import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 import { ref } from "vue";
 import { useRouter } from "vue-router";
+import CryptoJS from "crypto-js";
+import { rules } from "@/plugins/validationMessages.js";
+import { useStore } from "vuex";
 
-const username = ref("");
-const password = ref("");
-const loading = ref(false);
 const router = useRouter();
+const store = useStore();
 
-function login() {
+const loading = ref(false);
+const form = ref(null);
+
+const user = ref({
+  username: "",
+  password: "",
+});
+
+const login = async () => {
+  const { valid } = await form.value.validate();
+  if (!valid) return;
+
   loading.value = true;
+  const hashedPassword = CryptoJS.SHA256(user.value.password).toString();
 
-  setTimeout(() => {
+  const loginUserData = {
+    username: user.value.username,
+    password: hashedPassword,
+  };
+
+  try {
+    let response = await AxiosApi.post("/auth/login", loginUserData);
+
+    const userData = {
+      username: user.value.username,
+      token: response.data.token,
+    };
+
+    store.dispatch("login", userData);
+
+    router.push("/");
+  } catch (error) {
+    console.log("Error for logging in");
+  } finally {
     loading.value = false;
-    router.push("/dashboard");
-  }, 2000);
-}
+  }
+};
 
 const redirectToRegister = () => {
   router.push("/signup");
