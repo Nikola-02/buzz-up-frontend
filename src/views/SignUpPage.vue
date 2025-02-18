@@ -176,10 +176,8 @@ const register = async () => {
 
   try {
     await AxiosApi.post("/users/register", newUser);
-    await AxiosApi.post("/users/register", newUser);
     router.push("/login");
   } catch (error) {
-    snackbarText.value = "Error while registering your account.";
     snackbarText.value = "Error while registering your account.";
   } finally {
     loading.value = false;

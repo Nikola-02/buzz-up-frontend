@@ -66,7 +66,6 @@
 
 <script setup>
 import AxiosApi from "@/plugins/axios";
-import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 import CryptoJS from "crypto-js";

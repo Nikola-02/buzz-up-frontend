@@ -3,7 +3,6 @@ import App from "./App.vue";
 import vuetify from "./plugins/vuetify";
 import { loadFonts } from "./plugins/webfontloader";
 import router from "./router";
-import axiosPlugin from "./plugins/axios";
 import { store } from "./store/store";
 import SnackbarComponent from "./components/SnackbarComponent.vue";
 
@@ -13,4 +12,4 @@ const app = createApp(App);
 
 app.component("SnackbarComponent", SnackbarComponent);
 
-app.use(store).use(axiosPlugin).use(vuetify).use(router).mount("#app");
+app.use(store).use(vuetify).use(router).mount("#app");
