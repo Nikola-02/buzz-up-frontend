@@ -8,6 +8,7 @@
           </v-toolbar>
 
           <v-card-text class="px-8">
+          <v-card-text class="px-8">
             <v-form ref="form" @submit.prevent="register">
               <v-text-field
                 v-model="user.firstName"
@@ -176,8 +177,10 @@ const register = async () => {
 
   try {
     await AxiosApi.post("/users/register", newUser);
+    await AxiosApi.post("/users/register", newUser);
     router.push("/login");
   } catch (error) {
+    snackbarText.value = "Error while registering your account.";
     snackbarText.value = "Error while registering your account.";
   } finally {
     loading.value = false;
