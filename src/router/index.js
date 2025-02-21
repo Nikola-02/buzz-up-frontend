@@ -2,14 +2,13 @@ import { createRouter, createWebHistory } from "vue-router";
 import Login from "@/views/LoginPage.vue";
 import SignUpPage from "@/views/SignUpPage.vue";
 import HomePage from "@/views/HomePage.vue";
-import NavSidebarLayout from "@/layouts/NavSidebarLayout.vue";
 
 const routes = [
   {
     path: "/",
     name: "Home",
     component: HomePage,
-    meta: { title: "BuzzUp", layout: NavSidebarLayout },
+    meta: { title: "BuzzUp", layout: "navsidebar" },
   },
   {
     path: "/login",

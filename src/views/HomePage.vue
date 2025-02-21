@@ -1,4 +1,4 @@
 <template>
-  <span>yoyo</span>
+  <span>FGUUIFWEGIIUFEWHU</span>
 </template>
 <script setup></script>

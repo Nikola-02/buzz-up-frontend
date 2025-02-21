@@ -1,30 +1,42 @@
 <template>
-  <v-container fluid>
+  <div class="container pt-5">
     <!-- NAVBAR -->
-    <v-app-bar color="primary" dark>
-      <v-app-bar-title>My Social App</v-app-bar-title>
-      <v-spacer></v-spacer>
+    <div class="nav">
+      <div class="title">
+        <h1>Buzz Up</h1>
+      </div>
+    </div>
+
+    <!-- GLAVNI SADRŽAJ -->
+    <v-container class="mt-12">
       <v-btn icon @click="logout">
         <v-icon>mdi-logout</v-icon>
       </v-btn>
-    </v-app-bar>
-
-    <!-- GLAVNI SADRŽAJ -->
-    <v-container>
       <v-row>
         <!-- LEVA SEKCIJA (Prijatelji) -->
         <v-col cols="12" sm="3" class="friends-section">
           <v-card>
             <v-card-title>Friends</v-card-title>
             <v-divider></v-divider>
-            <v-list>
-              <v-list-item v-for="friend in friends" :key="friend.id">
-                <v-list-item-avatar>
-                  <v-img :src="friend.avatar"></v-img>
-                </v-list-item-avatar>
-                <v-list-item-content>
-                  <v-list-item-title>{{ friend.name }}</v-list-item-title>
-                </v-list-item-content>
+            <v-list class="w-100">
+              <v-list-item
+                v-for="friend in friends"
+                :key="friend.id"
+                class="d-flex flex-md-nowrap align-center"
+              >
+                <div class="friend d-flex align-items justify-start">
+                  <div class="friend-image">
+                    <img
+                      :src="friend.avatar"
+                      :alt="friend.name"
+                      class="w-25 rounded"
+                    />
+                  </div>
+
+                  <div class="friend-name d-flex align-center text-start">
+                    <span>{{ friend.name }}</span>
+                  </div>
+                </div>
               </v-list-item>
             </v-list>
           </v-card>
@@ -33,7 +45,7 @@
         <router-view></router-view>
       </v-row>
     </v-container>
-  </v-container>
+  </div>
 </template>
 
 <script setup>

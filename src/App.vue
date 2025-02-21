@@ -14,7 +14,9 @@ import { useRoute } from "vue-router";
 
 const layoutMap = {
   empty: defineAsyncComponent(() => import("./layouts/EmptyLayout.vue")),
-  sidebar: defineAsyncComponent(() => import("./layouts/NavSidebarLayout.vue")),
+  navsidebar: defineAsyncComponent(() =>
+    import("./layouts/NavSidebarLayout.vue")
+  ),
 };
 
 const route = useRoute();
