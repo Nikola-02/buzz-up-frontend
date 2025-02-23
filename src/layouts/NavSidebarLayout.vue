@@ -16,7 +16,7 @@
         <!-- LEVA SEKCIJA (Prijatelji) -->
         <v-col cols="12" sm="3" class="friends-section">
           <v-card>
-            <v-card-title>Friends</v-card-title>
+            <v-card-title>Your friends</v-card-title>
             <v-divider></v-divider>
             <v-list class="w-100">
               <v-list-item
