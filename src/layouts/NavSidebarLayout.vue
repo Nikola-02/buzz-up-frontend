@@ -24,12 +24,12 @@
                 :key="friend.id"
                 class="d-flex flex-md-nowrap align-center"
               >
-                <div class="friend d-flex align-items justify-start">
-                  <div class="friend-image">
+                <div class="friend d-flex align-items justify-start ga-3">
+                  <div class="friend-image w-25">
                     <img
                       :src="friend.avatar"
                       :alt="friend.name"
-                      class="w-25 rounded"
+                      class="w-100 rounded"
                     />
                   </div>
 
