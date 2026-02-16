@@ -29,3 +29,9 @@ const layoutComponent = computed(() => {
   return layoutMap[layout.value];
 });
 </script>
+<style>
+.container {
+  width: 90%;
+  margin: 0px auto;
+}
+</style>
