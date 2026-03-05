@@ -17,6 +17,7 @@ const layoutMap = {
   navsidebar: defineAsyncComponent(() =>
     import("./layouts/NavSidebarLayout.vue")
   ),
+  admin: defineAsyncComponent(() => import("./layouts/AdminLayout.vue")),
 };
 
 const route = useRoute();
@@ -33,5 +34,11 @@ const layoutComponent = computed(() => {
 .container {
   width: 90%;
   margin: 0px auto;
+}
+
+.v-avatar img {
+  object-fit: cover;
+  width: 100%;
+  height: 100%;
 }
 </style>

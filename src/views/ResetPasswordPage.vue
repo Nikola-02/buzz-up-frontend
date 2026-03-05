@@ -157,7 +157,6 @@
 <script setup>
 import { ref } from "vue";
 import { useRouter, useRoute } from "vue-router";
-import CryptoJS from "crypto-js";
 import AxiosApi from "@/plugins/axios";
 import { rules } from "@/plugins/validationMessages.js";
 
@@ -183,14 +182,13 @@ const resetPassword = async () => {
   if (!valid) return;
 
   loading.value = true;
-  const hashedPassword = CryptoJS.SHA256(password.value).toString();
 
   serverErrors.value = { NewPassword: "" };
 
   try {
     await AxiosApi.post("/users/reset-password", {
       token: token,
-      newPassword: hashedPassword,
+      newPassword: password.value,
     });
     resetSuccess.value = true;
   } catch (error) {

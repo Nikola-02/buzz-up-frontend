@@ -129,7 +129,6 @@
 import AxiosApi from "@/plugins/axios";
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import CryptoJS from "crypto-js";
 import { rules } from "@/plugins/validationMessages.js";
 import { useStore } from "vuex";
 
@@ -152,11 +151,10 @@ const login = async () => {
 
   loading.value = true;
   loginError.value = "";
-  const hashedPassword = CryptoJS.SHA256(user.value.password).toString();
 
   const loginUserData = {
     username: user.value.username,
-    password: hashedPassword,
+    password: user.value.password,
   };
 
   try {
@@ -168,15 +166,16 @@ const login = async () => {
 
     const userData = {
       token,
+      id: payload.Id,
       username: user.value.username,
       firstName: payload.FirstName || "",
       lastName: payload.LastName || "",
       email: payload.Email || "",
       useCaseIds: payload.UseCaseIds || [],
+      role: payload.Role || "",
     };
 
-    store.dispatch("login", userData);
-
+    await store.dispatch("login", userData);
     router.push("/");
   } catch (error) {
     if (error.response?.status === 401) {

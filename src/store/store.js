@@ -3,6 +3,7 @@ import { createStore } from "vuex";
 export const store = createStore({
   state: {
     user: JSON.parse(localStorage.getItem("user")) || null,
+    profile: JSON.parse(localStorage.getItem("profile")) || null,
   },
   mutations: {
     setUser(state, userData) {
@@ -10,6 +11,13 @@ export const store = createStore({
     },
     clearUser(state) {
       state.user = null;
+    },
+    setProfile(state, profileData) {
+      state.profile = profileData;
+      localStorage.setItem("profile", JSON.stringify(profileData));
+    },
+    clearProfile(state) {
+      state.profile = null;
     },
   },
   actions: {
@@ -19,7 +27,9 @@ export const store = createStore({
     },
     logout({ commit }) {
       commit("clearUser");
+      commit("clearProfile");
       localStorage.removeItem("user");
+      localStorage.removeItem("profile");
     },
     // Returns true if token expired and user was logged out
     checkSession({ state, dispatch }) {
@@ -43,18 +53,31 @@ export const store = createStore({
     getUser(state) {
       return state.user;
     },
+    getProfile(state) {
+      return state.profile;
+    },
     isAuthenticated(state) {
       return !!state.user;
     },
     fullName(state) {
-      if (!state.user) return "";
-      return `${state.user.firstName} ${state.user.lastName}`.trim();
+      if (state.profile) return `${state.profile.firstName} ${state.profile.lastName}`.trim();
+      if (state.user) return `${state.user.firstName} ${state.user.lastName}`.trim();
+      return "";
     },
     userEmail(state) {
-      return state.user?.email || "";
+      return state.profile?.email || state.user?.email || "";
+    },
+    userImage(state) {
+      return state.profile?.image || "default.png";
     },
     useCaseIds(state) {
       return state.user?.useCaseIds || [];
+    },
+    userRole(state) {
+      return state.user?.role || "";
+    },
+    isAdmin(state) {
+      return state.user?.role === "Admin";
     },
   },
 });

@@ -134,6 +134,8 @@
               "
               @click:append-inner="showPassword = !showPassword"
               :rules="[rules.required, rules.password]"
+              :error-messages="serverErrors.Password"
+              @update:model-value="serverErrors.Password = ''"
               required
               variant="outlined"
               density="comfortable"
@@ -170,7 +172,14 @@
                   rounded="lg"
                   hide-details="auto"
                   class="modern-input"
+                  :loading="imageUploading"
+                  :error-messages="imageError"
+                  @update:model-value="onImageSelected"
                 ></v-file-input>
+                <span v-if="uploadedFileName" class="upload-success">
+                  <v-icon size="14" color="#22c55e">mdi-check-circle</v-icon>
+                  Image uploaded
+                </span>
               </div>
 
               <div class="input-row">
@@ -230,6 +239,22 @@
                   ></v-text-field>
                 </div>
               </div>
+
+              <div class="input-group">
+                <label class="input-label optional-label">Date of Birth</label>
+                <v-text-field
+                  v-model="user.dateOfBirth"
+                  type="date"
+                  prepend-inner-icon="mdi-calendar-outline"
+                  :max="today"
+                  :rules="[rules.noFutureDate]"
+                  variant="outlined"
+                  density="comfortable"
+                  rounded="lg"
+                  hide-details="auto"
+                  class="modern-input"
+                ></v-text-field>
+              </div>
             </div>
           </transition>
 
@@ -260,12 +285,13 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { useRouter } from "vue-router";
-import CryptoJS from "crypto-js";
 import AxiosApi from "@/plugins/axios";
 import { rules } from "@/plugins/validationMessages.js";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
+
+const today = computed(() => new Date().toISOString().split("T")[0]);
 
 const router = useRouter();
 const loading = ref(false);
@@ -278,7 +304,12 @@ const serverErrors = ref({
   FirstName: "",
   LastName: "",
   Username: "",
+  Password: "",
 });
+
+const imageUploading = ref(false);
+const imageError = ref("");
+const uploadedFileName = ref("");
 
 const user = ref({
   username: "",
@@ -291,39 +322,61 @@ const user = ref({
   city: "",
   workplace: "",
   university: "",
+  dateOfBirth: "",
 });
+
+const onImageSelected = async (file) => {
+  uploadedFileName.value = "";
+  imageError.value = "";
+
+  if (!file) return;
+
+  imageUploading.value = true;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await AxiosApi.post("/files", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    uploadedFileName.value = response.data.file;
+  } catch (error) {
+    imageError.value =
+      error.response?.status === 415
+        ? "Unsupported file type. Use JPG, PNG, or JPEG."
+        : "Failed to upload image. Please try again.";
+    user.value.image = null;
+  } finally {
+    imageUploading.value = false;
+  }
+};
 
 const register = async () => {
   const { valid } = await form.value.validate();
   if (!valid) return;
 
   loading.value = true;
-  const hashedPassword = CryptoJS.SHA256(user.value.password).toString();
 
-  const formData = new FormData();
-  formData.append("username", user.value.username);
-  formData.append("email", user.value.email);
-  formData.append("firstName", user.value.firstName);
-  formData.append("lastName", user.value.lastName);
-  formData.append("password", hashedPassword);
-
-  // Append image file only if user selected one
-  if (user.value.image) {
-    formData.append("image", user.value.image);
-  }
-
-  if (user.value.country) formData.append("country", user.value.country);
-  if (user.value.city) formData.append("city", user.value.city);
-  if (user.value.workplace) formData.append("workplace", user.value.workplace);
-  if (user.value.university) formData.append("university", user.value.university);
+  const newUser = {
+    username: user.value.username,
+    email: user.value.email,
+    firstName: user.value.firstName,
+    lastName: user.value.lastName,
+    password: user.value.password,
+    image: uploadedFileName.value || null,
+    country: user.value.country || null,
+    city: user.value.city || null,
+    workplace: user.value.workplace || null,
+    university: user.value.university || null,
+    dateOfBirth: user.value.dateOfBirth || null,
+  };
 
   // Clear previous server errors
-  serverErrors.value = { Email: "", FirstName: "", LastName: "", Username: "" };
+  serverErrors.value = { Email: "", FirstName: "", LastName: "", Username: "", Password: "" };
 
   try {
-    await AxiosApi.post("/users/register", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
+    await AxiosApi.post("/users/register", newUser);
     router.push("/login");
   } catch (error) {
     const errors = error.response?.data;
@@ -519,6 +572,16 @@ const redirectToLogin = () => {
 
 .optional-label {
   color: #94a3b8;
+}
+
+.upload-success {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #22c55e;
+  font-weight: 500;
+  padding-left: 4px;
 }
 
 .modern-input :deep(.v-field) {

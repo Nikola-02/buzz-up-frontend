@@ -10,7 +10,7 @@
     <div class="profile-header">
       <div class="profile-avatar-wrapper">
         <v-avatar size="120" class="profile-avatar">
-          <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Profile photo" />
+          <img :src="profileImageUrl" alt="Profile photo" />
         </v-avatar>
         <v-btn icon size="small" class="avatar-edit-btn">
           <v-icon size="18">mdi-camera</v-icon>
@@ -18,16 +18,11 @@
       </div>
       <div class="profile-header-info">
         <div class="profile-identity">
-          <h1 class="profile-display-name">Alex Thompson</h1>
-          <span class="profile-handle">@alexthompson</span>
-          <div class="profile-stats-inline">
-            <span><strong>128</strong> friends</span>
-            <span class="stats-dot"></span>
-            <span><strong>45</strong> posts</span>
-          </div>
+          <h1 class="profile-display-name">{{ profile?.firstName }} {{ profile?.lastName }}</h1>
+          <span class="profile-handle">@{{ profile?.username }}</span>
         </div>
         <div class="profile-actions">
-          <v-btn variant="outlined" class="edit-btn" rounded>
+          <v-btn variant="outlined" class="edit-btn" rounded @click="openEditProfile">
             <v-icon size="18" class="mr-1">mdi-pencil-outline</v-icon>
             Edit Profile
           </v-btn>
@@ -45,29 +40,40 @@
               <v-icon size="20">mdi-information-outline</v-icon>
               <span>About</span>
             </div>
-            <p class="bio-text">
-              Full-stack developer. Love building things that make people's lives easier. Coffee addict and occasional gamer.
-            </p>
+            <p v-if="profile?.bio" class="bio-text">{{ profile.bio }}</p>
+            <p v-else class="bio-text empty-field">No bio yet</p>
             <div class="about-items">
               <div class="about-item">
                 <v-icon size="18" class="about-icon">mdi-map-marker-outline</v-icon>
-                <span>Belgrade, Serbia</span>
+                <span v-if="profile?.city || profile?.country">
+                  Lives in {{ [profile.city, profile.country].filter(Boolean).join(', ') }}
+                </span>
+                <span v-else class="empty-field">Location</span>
               </div>
               <div class="about-item">
                 <v-icon size="18" class="about-icon">mdi-briefcase-outline</v-icon>
-                <span>Software Engineer at TechCo</span>
+                <span v-if="profile?.workplace">Works at {{ profile.workplace }}</span>
+                <span v-else class="empty-field">Workplace</span>
               </div>
               <div class="about-item">
                 <v-icon size="18" class="about-icon">mdi-school-outline</v-icon>
-                <span>University of Belgrade</span>
+                <span v-if="profile?.university">Studies at {{ profile.university }}</span>
+                <span v-else class="empty-field">University</span>
               </div>
               <div class="about-item">
                 <v-icon size="18" class="about-icon">mdi-calendar-outline</v-icon>
-                <span>Joined March 2024</span>
+                <span v-if="profile?.dateOfBirth">Born on {{ formatDate(profile.dateOfBirth) }}</span>
+                <span v-else class="empty-field">Date of birth</span>
+              </div>
+              <div class="about-item">
+                <v-icon size="18" class="about-icon">mdi-email-outline</v-icon>
+                <span v-if="profile?.email">{{ profile.email }}</span>
+                <span v-else class="empty-field">Email</span>
               </div>
               <div class="about-item">
                 <v-icon size="18" class="about-icon">mdi-link-variant</v-icon>
-                <a href="#" class="about-link">alexthompson.dev</a>
+                <a v-if="profile?.website" :href="profile.website" target="_blank" class="about-link">{{ profile.website }}</a>
+                <span v-else class="empty-field">Website</span>
               </div>
             </div>
           </div>
@@ -96,10 +102,10 @@
           <div class="create-post-card">
             <div class="create-post-top">
               <v-avatar size="44" class="create-avatar">
-                <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Me" />
+                <img :src="profileImageUrl" alt="Me" />
               </v-avatar>
               <div class="create-post-input">
-                What's buzzing, Alex?
+                What's buzzing, {{ profile?.firstName }}?
               </div>
             </div>
             <div class="create-post-bottom">
@@ -118,10 +124,10 @@
           <div v-for="post in posts" :key="post.id" class="post-card mt-4">
             <div class="post-top">
               <v-avatar size="44">
-                <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Alex" />
+                <img :src="profileImageUrl" alt="Me" />
               </v-avatar>
               <div class="post-meta">
-                <span class="post-author">Alex Thompson</span>
+                <span class="post-author">{{ profile?.firstName }} {{ profile?.lastName }}</span>
                 <span class="post-timestamp">
                   <v-icon size="12">mdi-clock-outline</v-icon>
                   {{ post.time }}
@@ -163,15 +169,411 @@
         </v-col>
       </v-row>
     </div>
+    <!-- Edit Profile Dialog -->
+    <v-dialog v-model="showEditDialog" max-width="560" persistent>
+      <v-card class="edit-dialog" :class="{ 'dark-mode': isDark }">
+        <div class="edit-dialog-header">
+          <h2 class="edit-dialog-title">Edit Profile</h2>
+          <v-btn icon variant="text" size="small" @click="closeEditDialog">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </div>
+
+        <div class="edit-dialog-body">
+          <!-- Profile image -->
+          <div class="edit-avatar-section">
+            <v-avatar size="80" class="edit-avatar">
+              <img :src="editImagePreview" alt="Profile" />
+            </v-avatar>
+            <div class="edit-avatar-actions">
+              <v-file-input
+                v-model="editImageFile"
+                placeholder="Change photo"
+                prepend-inner-icon="mdi-camera-outline"
+                prepend-icon=""
+                accept="image/*"
+                variant="outlined"
+                density="compact"
+                rounded="lg"
+                hide-details="auto"
+                class="edit-input"
+                :loading="imageUploading"
+                :error-messages="imageError"
+                @update:model-value="onEditImageSelected"
+              ></v-file-input>
+              <span v-if="editUploadedFileName && editUploadedFileName !== editForm.image" class="upload-success-text">
+                <v-icon size="14" color="#22c55e">mdi-check-circle</v-icon>
+                New image uploaded
+              </span>
+            </div>
+          </div>
+
+          <v-form ref="editFormRef" @submit.prevent="saveProfile" class="edit-form">
+            <!-- Name row -->
+            <div class="edit-row">
+              <div class="edit-field">
+                <label class="edit-label">First Name *</label>
+                <v-text-field
+                  v-model="editForm.firstName"
+                  placeholder="First name"
+                  :rules="[rules.required]"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details="auto"
+                  class="edit-input"
+                ></v-text-field>
+              </div>
+              <div class="edit-field">
+                <label class="edit-label">Last Name *</label>
+                <v-text-field
+                  v-model="editForm.lastName"
+                  placeholder="Last name"
+                  :rules="[rules.required]"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details="auto"
+                  class="edit-input"
+                ></v-text-field>
+              </div>
+            </div>
+
+            <div class="edit-field">
+              <label class="edit-label">Username *</label>
+              <v-text-field
+                v-model="editForm.username"
+                placeholder="Username"
+                :rules="[rules.required]"
+                variant="outlined"
+                density="compact"
+                rounded="lg"
+                hide-details="auto"
+                class="edit-input"
+              ></v-text-field>
+            </div>
+
+            <div class="edit-field">
+              <label class="edit-label">Email *</label>
+              <v-text-field
+                v-model="editForm.email"
+                placeholder="Email"
+                type="email"
+                :rules="[rules.required, rules.email]"
+                variant="outlined"
+                density="compact"
+                rounded="lg"
+                hide-details="auto"
+                class="edit-input"
+              ></v-text-field>
+            </div>
+
+            <div class="edit-field">
+              <label class="edit-label">New Password</label>
+              <v-text-field
+                v-model="editForm.password"
+                placeholder="Leave blank to keep current"
+                :type="showEditPassword ? 'text' : 'password'"
+                :append-inner-icon="showEditPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
+                @click:append-inner="showEditPassword = !showEditPassword"
+                :rules="[optionalPassword]"
+                variant="outlined"
+                density="compact"
+                rounded="lg"
+                hide-details="auto"
+                class="edit-input"
+              ></v-text-field>
+            </div>
+
+            <div class="edit-field">
+              <label class="edit-label">Bio</label>
+              <v-textarea
+                v-model="editForm.bio"
+                placeholder="Tell us about yourself..."
+                variant="outlined"
+                density="compact"
+                rounded="lg"
+                hide-details="auto"
+                rows="2"
+                auto-grow
+                class="edit-input"
+              ></v-textarea>
+            </div>
+
+            <div class="edit-row">
+              <div class="edit-field">
+                <label class="edit-label">Country</label>
+                <v-text-field
+                  v-model="editForm.country"
+                  placeholder="Country"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details="auto"
+                  class="edit-input"
+                ></v-text-field>
+              </div>
+              <div class="edit-field">
+                <label class="edit-label">City</label>
+                <v-text-field
+                  v-model="editForm.city"
+                  placeholder="City"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details="auto"
+                  class="edit-input"
+                ></v-text-field>
+              </div>
+            </div>
+
+            <div class="edit-row">
+              <div class="edit-field">
+                <label class="edit-label">Workplace</label>
+                <v-text-field
+                  v-model="editForm.workplace"
+                  placeholder="Workplace"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details="auto"
+                  class="edit-input"
+                ></v-text-field>
+              </div>
+              <div class="edit-field">
+                <label class="edit-label">University</label>
+                <v-text-field
+                  v-model="editForm.university"
+                  placeholder="University"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details="auto"
+                  class="edit-input"
+                ></v-text-field>
+              </div>
+            </div>
+
+            <div class="edit-field">
+              <label class="edit-label">Date of Birth</label>
+              <v-text-field
+                v-model="editForm.dateOfBirth"
+                type="date"
+                :max="today"
+                :rules="[rules.noFutureDate]"
+                variant="outlined"
+                density="compact"
+                rounded="lg"
+                hide-details="auto"
+                class="edit-input"
+              ></v-text-field>
+            </div>
+
+            <div class="edit-field">
+              <label class="edit-label">Website</label>
+              <v-text-field
+                v-model="editForm.website"
+                placeholder="https://yoursite.com"
+                variant="outlined"
+                density="compact"
+                rounded="lg"
+                hide-details="auto"
+                class="edit-input"
+              ></v-text-field>
+            </div>
+
+            <div class="edit-dialog-actions">
+              <button type="button" class="edit-cancel-btn" @click="closeEditDialog">Cancel</button>
+              <button type="submit" class="edit-save-btn" :disabled="saving">
+                <v-progress-circular v-if="saving" indeterminate size="18" width="2" color="#fff"></v-progress-circular>
+                <span v-else>Save Changes</span>
+              </button>
+            </div>
+          </v-form>
+        </div>
+      </v-card>
+    </v-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useTheme } from "vuetify";
+import { useStore } from "vuex";
+import AxiosApi from "@/plugins/axios";
+import { rules } from "@/plugins/validationMessages.js";
 
 const theme = useTheme();
+const store = useStore();
 const isDark = computed(() => theme.global.name.value === "dark");
+
+const profile = computed(() => store.getters.getProfile);
+
+onMounted(async () => {
+  if (!store.getters.getProfile) {
+    const userId = store.getters.getUser?.id;
+    if (userId) {
+      try {
+        const res = await AxiosApi.get(`/users/${userId}`);
+        store.commit("setProfile", res.data);
+      } catch (e) {
+        // Profile fetch failed
+      }
+    }
+  }
+});
+
+const profileImageUrl = computed(() => {
+  const image = store.getters.userImage;
+  return `http://localhost:5001/temp/${image}`;
+});
+
+const today = computed(() => new Date().toISOString().split("T")[0]);
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+};
+
+const optionalPassword = (v) => {
+  if (!v) return true;
+  return rules.password(v);
+};
+
+// ===== EDIT PROFILE =====
+const showEditDialog = ref(false);
+const editFormRef = ref(null);
+const saving = ref(false);
+const showEditPassword = ref(false);
+const imageUploading = ref(false);
+const imageError = ref("");
+const editImageFile = ref(null);
+const editUploadedFileName = ref("");
+
+const editForm = ref({
+  firstName: "",
+  lastName: "",
+  username: "",
+  email: "",
+  password: "",
+  bio: "",
+  country: "",
+  city: "",
+  workplace: "",
+  university: "",
+  dateOfBirth: "",
+  website: "",
+  image: "",
+});
+
+const editImagePreview = computed(() => {
+  if (editUploadedFileName.value && editUploadedFileName.value !== editForm.value.image) {
+    return `http://localhost:5001/temp/${editUploadedFileName.value}`;
+  }
+  if (editForm.value.image) {
+    return `http://localhost:5001/temp/${editForm.value.image}`;
+  }
+  return `http://localhost:5001/temp/default.png`;
+});
+
+const openEditProfile = async () => {
+  const userId = store.getters.getUser?.id;
+  if (!userId) return;
+
+  // Fetch fresh user data
+  try {
+    const res = await AxiosApi.get(`/users/${userId}`);
+    const data = res.data;
+    editForm.value = {
+      firstName: data.firstName || "",
+      lastName: data.lastName || "",
+      username: data.username || "",
+      email: data.email || "",
+      password: "",
+      bio: data.bio || "",
+      country: data.country || "",
+      city: data.city || "",
+      workplace: data.workplace || "",
+      university: data.university || "",
+      dateOfBirth: data.dateOfBirth ? data.dateOfBirth.split("T")[0] : "",
+      website: data.website || "",
+      image: data.image || "",
+    };
+    showEditPassword.value = false;
+    editUploadedFileName.value = "";
+    editImageFile.value = null;
+    imageError.value = "";
+    showEditDialog.value = true;
+  } catch (e) {
+    // Error handled by axios interceptor
+  }
+};
+
+const closeEditDialog = () => {
+  showEditDialog.value = false;
+};
+
+const onEditImageSelected = async (file) => {
+  imageError.value = "";
+  if (!file) return;
+
+  imageUploading.value = true;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await AxiosApi.post("/files", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    editUploadedFileName.value = response.data.file;
+  } catch (error) {
+    imageError.value = error.response?.status === 415
+      ? "Unsupported file type. Use JPG, PNG, or GIF."
+      : "Failed to upload image.";
+    editImageFile.value = null;
+  } finally {
+    imageUploading.value = false;
+  }
+};
+
+const saveProfile = async () => {
+  const { valid } = await editFormRef.value.validate();
+  if (!valid) return;
+
+  saving.value = true;
+  const userId = store.getters.getUser?.id;
+
+  const payload = {
+    firstName: editForm.value.firstName,
+    lastName: editForm.value.lastName,
+    username: editForm.value.username,
+    email: editForm.value.email,
+    password: editForm.value.password || null,
+    bio: editForm.value.bio || null,
+    country: editForm.value.country || null,
+    city: editForm.value.city || null,
+    workplace: editForm.value.workplace || null,
+    university: editForm.value.university || null,
+    dateOfBirth: editForm.value.dateOfBirth || null,
+    website: editForm.value.website || null,
+    image: editUploadedFileName.value || editForm.value.image || null,
+  };
+
+  try {
+    await AxiosApi.put(`/users/${userId}`, payload);
+
+    // Refresh profile in store
+    const res = await AxiosApi.get(`/users/${userId}`);
+    store.commit("setProfile", res.data);
+
+    showEditDialog.value = false;
+  } catch (e) {
+    // Error handled by axios interceptor
+  } finally {
+    saving.value = false;
+  }
+};
 
 const previewFriends = ref([
   { id: 1, name: "John", avatar: "https://randomuser.me/api/portraits/men/1.jpg" },
@@ -438,6 +840,12 @@ const posts = ref([
   text-decoration: underline;
 }
 
+.empty-field {
+  font-style: italic;
+  color: var(--text-muted) !important;
+  opacity: 0.7;
+}
+
 /* ===== FRIENDS PREVIEW ===== */
 .friends-grid {
   display: grid;
@@ -693,6 +1101,210 @@ const posts = ref([
   .friends-grid {
     grid-template-columns: repeat(3, 1fr);
     gap: 8px;
+  }
+}
+
+
+</style>
+
+<style>
+/* Edit Profile Dialog - unscoped because v-dialog teleports outside component */
+.edit-dialog {
+  --card-bg: #fff;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --hover-bg: #f1f5f9;
+  --divider: #e2e8f0;
+  border-radius: 16px !important;
+  overflow: hidden;
+  background: var(--card-bg) !important;
+}
+
+.edit-dialog.dark-mode {
+  --card-bg: #1e1e2e;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --hover-bg: #2a2a3e;
+  --divider: #334155;
+}
+
+.edit-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.edit-dialog-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.edit-dialog-header .v-btn {
+  color: var(--text-muted) !important;
+}
+
+.edit-dialog-body {
+  padding: 20px 24px 24px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.edit-avatar-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.edit-avatar {
+  flex-shrink: 0;
+  border: 3px solid var(--divider);
+}
+
+.edit-avatar-actions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.upload-success-text {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #22c55e;
+  font-weight: 500;
+  padding-left: 4px;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.edit-row {
+  display: flex;
+  gap: 12px;
+}
+
+.edit-row .edit-field {
+  flex: 1;
+}
+
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.edit-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-left: 4px;
+}
+
+.edit-input .v-field {
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  background: var(--card-bg) !important;
+}
+
+.edit-input .v-field input,
+.edit-input .v-field textarea {
+  color: var(--text-primary) !important;
+}
+
+.edit-input .v-field input::placeholder,
+.edit-input .v-field textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
+.edit-input .v-field__outline {
+  color: var(--divider) !important;
+}
+
+.edit-input .v-field--focused .v-field__outline {
+  color: #0f3460 !important;
+}
+
+.edit-input .v-field__prepend-inner .v-icon,
+.edit-input .v-field__append-inner .v-icon {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.edit-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--divider);
+}
+
+.edit-cancel-btn {
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 1px solid var(--divider);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.edit-cancel-btn:hover {
+  background: var(--hover-bg);
+}
+
+.edit-save-btn {
+  padding: 10px 24px;
+  border-radius: 10px;
+  border: none;
+  background: linear-gradient(135deg, #1a1a2e, #0f3460);
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+}
+
+.edit-save-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(15, 52, 96, 0.3);
+}
+
+.edit-save-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 600px) {
+  .edit-row {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .edit-avatar-section {
+    flex-direction: column;
+    text-align: center;
   }
 }
 </style>

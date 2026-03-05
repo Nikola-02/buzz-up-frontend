@@ -91,11 +91,28 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useTheme } from "vuetify";
+import { useStore } from "vuex";
+import AxiosApi from "@/plugins/axios";
 
 const theme = useTheme();
+const store = useStore();
 const isDark = computed(() => theme.global.name.value === "dark");
+
+onMounted(async () => {
+  if (!store.getters.getProfile) {
+    const userId = store.getters.getUser?.id;
+    if (userId) {
+      try {
+        const res = await AxiosApi.get(`/users/${userId}`);
+        store.commit("setProfile", res.data);
+      } catch (e) {
+        // Profile fetch failed
+      }
+    }
+  }
+});
 
 const posts = ref([
   {

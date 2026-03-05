@@ -23,25 +23,49 @@
 
       <div class="navbar-actions">
         <!-- NOTIFICATIONS DROPDOWN -->
-        <v-menu v-model="showNotifications" offset-y transition="slide-y-transition" :close-on-content-click="false">
+        <v-menu
+          v-model="showNotifications"
+          offset-y
+          transition="slide-y-transition"
+          :close-on-content-click="false"
+        >
           <template v-slot:activator="{ props }">
             <v-btn icon variant="text" class="nav-action-btn" v-bind="props">
-              <v-badge v-if="unreadNotifications > 0" color="#ff6b6b" :content="unreadNotifications" :offset-x="-2" :offset-y="-2">
+              <v-badge
+                v-if="unreadNotifications > 0"
+                color="#ff6b6b"
+                :content="unreadNotifications"
+                :offset-x="-2"
+                :offset-y="-2"
+              >
                 <v-icon>mdi-bell-outline</v-icon>
               </v-badge>
               <v-icon v-else>mdi-bell-outline</v-icon>
             </v-btn>
           </template>
 
-          <v-card class="notifications-dropdown" min-width="340" max-width="380">
+          <v-card
+            class="notifications-dropdown"
+            min-width="340"
+            max-width="380"
+          >
             <div class="notif-header">
               <span class="notif-title">Notifications</span>
-              <v-btn variant="text" size="x-small" class="mark-read-btn" @click="markAllRead">
+              <v-btn
+                variant="text"
+                size="x-small"
+                class="mark-read-btn"
+                @click="markAllRead"
+              >
                 Mark all as read
               </v-btn>
             </div>
             <v-divider></v-divider>
-            <v-list density="compact" class="notif-list" v-if="notifications.length">
+            <v-list
+              density="compact"
+              class="notif-list"
+              v-if="notifications.length"
+            >
               <v-list-item
                 v-for="notif in notifications"
                 :key="notif.id"
@@ -81,11 +105,16 @@
         <v-divider vertical class="mx-2 nav-divider"></v-divider>
 
         <!-- USER AVATAR DROPDOWN -->
-        <v-menu v-model="showUserMenu" offset-y transition="slide-y-transition" :close-on-content-click="false">
+        <v-menu
+          v-model="showUserMenu"
+          offset-y
+          transition="slide-y-transition"
+          :close-on-content-click="false"
+        >
           <template v-slot:activator="{ props }">
             <div class="user-avatar-btn" v-bind="props">
               <v-avatar size="36" class="user-avatar">
-                <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="My profile" />
+                <img :src="userAvatarUrl" alt="My profile" />
               </v-avatar>
               <v-icon size="16" class="avatar-arrow">mdi-chevron-down</v-icon>
             </div>
@@ -95,11 +124,15 @@
             <!-- Profile header -->
             <div class="dropdown-profile-header">
               <v-avatar size="48">
-                <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="My profile" />
+                <img :src="userAvatarUrl" alt="My profile" />
               </v-avatar>
               <div class="dropdown-profile-info">
-                <span class="dropdown-profile-name">Alex Thompson</span>
-                <span class="dropdown-profile-email">alex@buzzup.com</span>
+                <span class="dropdown-profile-name">{{
+                  store.getters.fullName
+                }}</span>
+                <span class="dropdown-profile-email">{{
+                  store.getters.userEmail
+                }}</span>
               </div>
             </div>
             <v-divider></v-divider>
@@ -113,15 +146,30 @@
                 <v-list-item-title>My Profile</v-list-item-title>
               </v-list-item>
 
+              <!-- Admin Dashboard (only for Admin role) -->
+              <v-list-item v-if="store.getters.isAdmin" @click="goToAdmin" class="dropdown-item">
+                <template v-slot:prepend>
+                  <v-icon size="20">mdi-shield-lock-outline</v-icon>
+                </template>
+                <v-list-item-title>Admin</v-list-item-title>
+              </v-list-item>
+
               <!-- Theme toggle -->
               <v-list-item class="dropdown-item" @click="toggleTheme">
                 <template v-slot:prepend>
-                  <v-icon size="20">{{ isDarkTheme ? 'mdi-weather-sunny' : 'mdi-weather-night' }}</v-icon>
+                  <v-icon size="20">{{
+                    isDarkTheme ? "mdi-weather-sunny" : "mdi-weather-night"
+                  }}</v-icon>
                 </template>
                 <v-list-item-title>Theme</v-list-item-title>
                 <template v-slot:append>
-                  <v-chip size="x-small" :color="isDarkTheme ? '#ffc107' : '#1a1a2e'" variant="flat" class="theme-chip">
-                    {{ isDarkTheme ? 'Dark' : 'Light' }}
+                  <v-chip
+                    size="x-small"
+                    :color="isDarkTheme ? '#ffc107' : '#1a1a2e'"
+                    variant="flat"
+                    class="theme-chip"
+                  >
+                    {{ isDarkTheme ? "Dark" : "Light" }}
                   </v-chip>
                 </template>
               </v-list-item>
@@ -149,26 +197,55 @@
       <div class="sidebar-header">
         <div class="sidebar-title-row">
           <span class="sidebar-title">Friends</span>
-          <v-chip size="x-small" color="#ffc107" variant="flat" class="friends-count">
+          <v-chip
+            size="x-small"
+            color="#ffc107"
+            variant="flat"
+            class="friends-count"
+          >
             {{ friends.length }}
           </v-chip>
         </div>
         <div class="sidebar-actions">
           <!-- Friend requests button -->
-          <v-btn icon variant="text" size="small" class="sidebar-action-btn" @click="showRequestsDialog = true">
-            <v-badge v-if="friendRequests.length" color="#ff6b6b" :content="friendRequests.length" :offset-x="-2" :offset-y="-2">
+          <v-btn
+            icon
+            variant="text"
+            size="small"
+            class="sidebar-action-btn"
+            @click="showRequestsDialog = true"
+          >
+            <v-badge
+              v-if="friendRequests.length"
+              color="#ff6b6b"
+              :content="friendRequests.length"
+              :offset-x="-2"
+              :offset-y="-2"
+            >
               <v-icon size="20">mdi-account-plus-outline</v-icon>
             </v-badge>
             <v-icon v-else size="20">mdi-account-plus-outline</v-icon>
           </v-btn>
           <!-- Search toggle -->
-          <v-btn icon variant="text" size="small" class="sidebar-action-btn" @click="toggleFriendSearch">
+          <v-btn
+            icon
+            variant="text"
+            size="small"
+            class="sidebar-action-btn"
+            @click="toggleFriendSearch"
+          >
             <v-icon size="20">mdi-magnify</v-icon>
           </v-btn>
           <!-- Activity status menu -->
           <v-menu offset-y>
             <template v-slot:activator="{ props }">
-              <v-btn icon variant="text" size="small" class="sidebar-action-btn" v-bind="props">
+              <v-btn
+                icon
+                variant="text"
+                size="small"
+                class="sidebar-action-btn"
+                v-bind="props"
+              >
                 <v-icon size="20">mdi-dots-vertical</v-icon>
               </v-btn>
             </template>
@@ -187,7 +264,12 @@
                   </template>
                   <v-list-item-title>{{ status.label }}</v-list-item-title>
                   <template v-slot:append>
-                    <v-icon v-if="myStatus === status.value" size="18" color="#31a24c">mdi-check</v-icon>
+                    <v-icon
+                      v-if="myStatus === status.value"
+                      size="18"
+                      color="#31a24c"
+                      >mdi-check</v-icon
+                    >
                   </template>
                 </v-list-item>
               </v-list>
@@ -272,7 +354,14 @@
       </div>
 
       <!-- No results -->
-      <div v-if="showFriendSearch && !filteredOnlineFriends.length && !filteredOfflineFriends.length" class="no-results">
+      <div
+        v-if="
+          showFriendSearch &&
+          !filteredOnlineFriends.length &&
+          !filteredOfflineFriends.length
+        "
+        class="no-results"
+      >
         <v-icon size="40" color="#bec3c9">mdi-account-search-outline</v-icon>
         <span>No friends found</span>
       </div>
@@ -289,29 +378,45 @@
     <v-card class="requests-dialog" rounded="xl">
       <div class="requests-dialog-header">
         <span class="requests-dialog-title">Friend Requests</span>
-        <v-btn icon variant="text" size="small" @click="showRequestsDialog = false">
+        <v-btn
+          icon
+          variant="text"
+          size="small"
+          @click="showRequestsDialog = false"
+        >
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </div>
       <v-divider></v-divider>
       <div class="requests-dialog-body" v-if="friendRequests.length">
-        <div
-          v-for="req in friendRequests"
-          :key="req.id"
-          class="request-card"
-        >
+        <div v-for="req in friendRequests" :key="req.id" class="request-card">
           <v-avatar size="50">
             <img :src="req.avatar" :alt="req.name" />
           </v-avatar>
           <div class="request-card-info">
             <span class="request-card-name">{{ req.name }}</span>
-            <span class="request-card-mutual">{{ req.mutualFriends }} mutual friends</span>
+            <span class="request-card-mutual"
+              >{{ req.mutualFriends }} mutual friends</span
+            >
           </div>
           <div class="request-card-actions">
-            <v-btn size="small" color="#0f3460" variant="flat" class="req-dialog-btn" rounded @click="acceptRequest(req.id)">
+            <v-btn
+              size="small"
+              color="#0f3460"
+              variant="flat"
+              class="req-dialog-btn"
+              rounded
+              @click="acceptRequest(req.id)"
+            >
               Accept
             </v-btn>
-            <v-btn size="small" variant="tonal" class="req-dialog-btn decline" rounded @click="declineRequest(req.id)">
+            <v-btn
+              size="small"
+              variant="tonal"
+              class="req-dialog-btn decline"
+              rounded
+              @click="declineRequest(req.id)"
+            >
               Decline
             </v-btn>
           </div>
@@ -335,6 +440,11 @@ const router = useRouter();
 const store = useStore();
 const theme = useTheme();
 
+const userAvatarUrl = computed(() => {
+  const image = store.getters.userImage;
+  return `http://localhost:5001/temp/${image}`;
+});
+
 // User menu dropdown
 const showUserMenu = ref(false);
 
@@ -343,10 +453,16 @@ const goToProfile = () => {
   router.push("/profile");
 };
 
+const goToAdmin = () => {
+  showUserMenu.value = false;
+  router.push("/admin");
+};
+
 // Theme
 const isDarkTheme = computed(() => theme.global.name.value === "dark");
 const toggleTheme = () => {
-  theme.global.name.value = theme.global.name.value === "light" ? "dark" : "light";
+  theme.global.name.value =
+    theme.global.name.value === "light" ? "dark" : "light";
 };
 
 // Notifications
@@ -395,11 +511,13 @@ const notifications = ref([
 ]);
 
 const unreadNotifications = computed(() => {
-  return notifications.value.filter(n => !n.read).length;
+  return notifications.value.filter((n) => !n.read).length;
 });
 
 const markAllRead = () => {
-  notifications.value.forEach(n => { n.read = true; });
+  notifications.value.forEach((n) => {
+    n.read = true;
+  });
 };
 
 // Activity status
@@ -445,11 +563,11 @@ const friendRequests = ref([
 ]);
 
 const acceptRequest = (id) => {
-  friendRequests.value = friendRequests.value.filter(r => r.id !== id);
+  friendRequests.value = friendRequests.value.filter((r) => r.id !== id);
 };
 
 const declineRequest = (id) => {
-  friendRequests.value = friendRequests.value.filter(r => r.id !== id);
+  friendRequests.value = friendRequests.value.filter((r) => r.id !== id);
 };
 
 const friends = ref([
@@ -493,12 +611,16 @@ const friends = ref([
 
 const filteredOnlineFriends = computed(() => {
   const q = friendSearchQuery.value.toLowerCase();
-  return friends.value.filter(f => f.isOnline && f.name.toLowerCase().includes(q));
+  return friends.value.filter(
+    (f) => f.isOnline && f.name.toLowerCase().includes(q),
+  );
 });
 
 const filteredOfflineFriends = computed(() => {
   const q = friendSearchQuery.value.toLowerCase();
-  return friends.value.filter(f => !f.isOnline && f.name.toLowerCase().includes(q));
+  return friends.value.filter(
+    (f) => !f.isOnline && f.name.toLowerCase().includes(q),
+  );
 });
 
 // const posts = ref([
@@ -638,6 +760,8 @@ const logout = () => {
   border: 2px solid rgba(255, 255, 255, 0.3);
   transition: border-color 0.2s ease;
 }
+
+
 
 .user-avatar-btn:hover .user-avatar {
   border-color: #ffc107;

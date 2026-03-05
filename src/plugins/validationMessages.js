@@ -4,4 +4,8 @@ export const rules = {
   password: (v) =>
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(v) ||
     "Password must have at least 8 characters, 1 uppercase, 1 lowercase, 1 number",
+  noFutureDate: (v) => {
+    if (!v) return true;
+    return new Date(v) <= new Date() || "Date cannot be in the future";
+  },
 };
