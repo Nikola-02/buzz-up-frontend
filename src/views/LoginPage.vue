@@ -127,12 +127,14 @@
 
 <script setup>
 import AxiosApi from "@/plugins/axios";
-import { ref } from "vue";
-import { useRouter } from "vue-router";
+import { ref, onMounted } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import { rules } from "@/plugins/validationMessages.js";
 import { useStore } from "vuex";
+import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const router = useRouter();
+const route = useRoute();
 const store = useStore();
 
 const loading = ref(false);
@@ -193,6 +195,17 @@ const redirectToRegister = () => {
 const goToForgotPassword = () => {
   router.push("/forgot-password");
 };
+
+onMounted(() => {
+  if (route.query.registered === "1") {
+    snackbarText.value = "Your account has been successfully created.";
+    snackbarColor.value = "success";
+    showSnackbar.value = true;
+
+    // Remove query so the message is not shown again on refresh.
+    router.replace({ path: route.path, query: {} });
+  }
+});
 </script>
 
 <style scoped>

@@ -34,6 +34,31 @@ export const adminTables = {
       { key: "firstName", label: "First Name" },
       { key: "lastName", label: "Last Name" },
       {
+        key: "image",
+        label: "Image",
+        type: "image",
+        format: (v) => `http://localhost:5001/temp/${v || "default.png"}`,
+      },
+      {
+        key: "dateOfBirth",
+        label: "Date of Birth",
+        format: (v) => (v ? new Date(v).toLocaleDateString() : ""),
+      },
+      {
+        key: "createdAt",
+        label: "Created At",
+        format: (v) => (v ? new Date(v).toLocaleString() : ""),
+      },
+      {
+        key: "isActive",
+        label: "Is Active",
+        chip: {
+          colorMap: { true: "#22c55e", false: "#ef4444" },
+          default: "#64748b",
+        },
+        format: (v) => (v ? "true" : "false"),
+      },
+      {
         key: "role",
         label: "Role",
         chip: {
@@ -81,8 +106,22 @@ export const adminTables = {
     columns: [
       { key: "id", label: "ID" },
       { key: "name", label: "Name" },
+      {
+        key: "isActive",
+        label: "Is Active",
+        chip: {
+          colorMap: { true: "#22c55e", false: "#ef4444" },
+          default: "#64748b",
+        },
+        format: (v) => (v ? "true" : "false"),
+      },
+      {
+        key: "createdAt",
+        label: "Created At",
+        format: (v) => (v ? new Date(v).toLocaleString() : ""),
+      },
     ],
-    searchKeys: ["name"],
+    searchKeys: ["name", "isActive", "createdAt"],
     identifierKey: "name",
     form: {
       defaults: { name: "" },

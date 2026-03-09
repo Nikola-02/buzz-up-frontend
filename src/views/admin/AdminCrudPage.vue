@@ -42,8 +42,14 @@
                 :key="col.key"
                 :class="{ 'id-cell': col.key === 'id' }"
               >
+                <img
+                  v-if="col.type === 'image'"
+                  :src="cellValue(col, item)"
+                  :alt="`${item.username || 'User'} image`"
+                  class="table-avatar"
+                />
                 <v-chip
-                  v-if="col.chip"
+                  v-else-if="col.chip"
                   :color="col.chip.colorMap?.[cellValue(col, item)] || col.chip.default"
                   size="small"
                   variant="flat"
@@ -70,6 +76,30 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="table-pagination" v-if="!loading && totalCount > 0">
+        <div class="pagination-summary">
+          Showing {{ paginationStart }}-{{ paginationEnd }} of {{ totalCount }}
+        </div>
+        <div class="pagination-controls">
+          <v-select
+            :model-value="perPage"
+            :items="perPageOptions"
+            density="compact"
+            variant="outlined"
+            hide-details
+            class="per-page-select"
+            @update:model-value="onPerPageChange"
+          ></v-select>
+          <v-pagination
+            :model-value="page"
+            :length="totalPages"
+            :total-visible="7"
+            density="comfortable"
+            @update:model-value="setPage"
+          ></v-pagination>
+        </div>
       </div>
     </div>
 
@@ -209,30 +239,91 @@ const config = computed(() => adminTables[tableName.value] || null);
 const items = ref([]);
 const loading = ref(false);
 const search = ref("");
+const page = ref(1);
+const perPage = ref(10);
+const totalCount = ref(0);
+const perPageOptions = [10, 20, 50, 100];
+let searchDebounceTimer = null;
 
 const cellValue = (col, item) => {
   const raw = item[col.key];
   return col.format ? col.format(raw, item) : (raw ?? "");
 };
 
-const filteredItems = computed(() => {
-  if (!config.value) return [];
-  const q = search.value?.toLowerCase() || "";
-  if (!q) return items.value;
-  const keys = config.value.searchKeys || [];
-  return items.value.filter((item) =>
-    keys.some((k) => String(item[k] ?? "").toLowerCase().includes(q))
-  );
+const filteredItems = computed(() => items.value);
+
+const totalPages = computed(() => {
+  if (!totalCount.value) return 1;
+  return Math.max(1, Math.ceil(totalCount.value / perPage.value));
 });
+
+const paginationStart = computed(() => {
+  if (!totalCount.value) return 0;
+  return (page.value - 1) * perPage.value + 1;
+});
+
+const paginationEnd = computed(() => {
+  if (!totalCount.value) return 0;
+  return Math.min(page.value * perPage.value, totalCount.value);
+});
+
+const mapResponseToPagination = (data) => {
+  if (Array.isArray(data)) {
+    return {
+      rows: data,
+      total: data.length,
+      currentPage: page.value,
+      perPage: perPage.value,
+    };
+  }
+
+  if (!data || typeof data !== "object") {
+    return { rows: [], total: 0, currentPage: page.value, perPage: perPage.value };
+  }
+
+  // Support both camelCase and PascalCase JSON property names.
+  const rows =
+    (Array.isArray(data.data) && data.data) ||
+    (Array.isArray(data.Data) && data.Data) ||
+    (Array.isArray(data.items) && data.items) ||
+    (Array.isArray(data.Items) && data.Items) ||
+    (Array.isArray(data.results) && data.results) ||
+    (Array.isArray(data.Results) && data.Results) ||
+    (Array.isArray(data.rows) && data.rows) ||
+    (Array.isArray(data.Rows) && data.Rows) ||
+    [];
+
+  const total = data.totalCount ?? data.TotalCount ?? rows.length;
+  const currentPage = data.currentPage ?? data.CurrentPage ?? page.value;
+  const responsePerPage = data.perPage ?? data.PerPage ?? perPage.value;
+
+  return {
+    rows,
+    total: Number(total) || 0,
+    currentPage: Number(currentPage) || 1,
+    perPage: Number(responsePerPage) || perPage.value,
+  };
+};
 
 const fetchItems = async () => {
   if (!config.value) return;
   loading.value = true;
   try {
-    const res = await AxiosApi.get(config.value.api);
-    items.value = res.data;
+    const res = await AxiosApi.get(config.value.api, {
+      params: {
+        keyword: search.value?.trim() || undefined,
+        page: page.value,
+        perPage: perPage.value,
+      },
+    });
+    const mapped = mapResponseToPagination(res.data);
+    items.value = mapped.rows;
+    totalCount.value = mapped.total;
+    page.value = mapped.currentPage;
+    perPage.value = mapped.perPage;
   } catch (e) {
     items.value = [];
+    totalCount.value = 0;
   } finally {
     loading.value = false;
   }
@@ -242,11 +333,37 @@ onMounted(fetchItems);
 
 watch(tableName, () => {
   search.value = "";
+  page.value = 1;
+  perPage.value = 10;
   items.value = [];
+  totalCount.value = 0;
   showFormDialog.value = false;
   showDeleteDialog.value = false;
   fetchItems();
 });
+
+watch(search, () => {
+  page.value = 1;
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    fetchItems();
+  }, 350);
+});
+
+const setPage = (nextPage) => {
+  const normalized = Number(nextPage) || 1;
+  if (normalized === page.value) return;
+  page.value = normalized;
+  fetchItems();
+};
+
+const onPerPageChange = (nextPerPage) => {
+  const normalized = Number(nextPerPage) || 10;
+  if (normalized === perPage.value && page.value === 1) return;
+  perPage.value = normalized;
+  page.value = 1;
+  fetchItems();
+};
 
 // Form
 const showFormDialog = ref(false);
@@ -504,6 +621,40 @@ const deleteItem = async () => {
   font-weight: 600;
   font-size: 0.72rem !important;
   color: #fff !important;
+}
+
+.table-avatar {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 1px solid var(--divider);
+  background: var(--table-header-bg);
+}
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-top: 1px solid var(--divider);
+}
+
+.pagination-summary {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.per-page-select {
+  width: 92px;
 }
 
 .actions-col {

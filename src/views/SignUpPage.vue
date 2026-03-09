@@ -377,7 +377,7 @@ const register = async () => {
 
   try {
     await AxiosApi.post("/users/register", newUser);
-    router.push("/login");
+    router.push({ path: "/login", query: { registered: "1" } });
   } catch (error) {
     const errors = error.response?.data;
     if (Array.isArray(errors)) {
@@ -392,9 +392,13 @@ const register = async () => {
       );
       if (!hasFieldError) {
         snackbarText.value = "Error while registering your account.";
+        snackbarColor.value = "red";
+        showSnackbar.value = true;
       }
     } else {
       snackbarText.value = "Error while registering your account.";
+      snackbarColor.value = "red";
+      showSnackbar.value = true;
     }
   } finally {
     loading.value = false;
