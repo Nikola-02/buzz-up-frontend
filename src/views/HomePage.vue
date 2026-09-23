@@ -200,7 +200,8 @@
     <div
       v-for="post in posts"
       :key="post.id"
-      class="post-card"
+      class="post-card post-card-open"
+      @click="goToPost(post.id)"
     >
       <!-- Post header -->
       <div class="post-top">
@@ -219,6 +220,16 @@
               <v-icon size="12">mdi-clock-outline</v-icon>
               {{ post.time }}
               <span v-if="post.location"> · {{ post.location }}</span>
+              <v-tooltip v-if="isOwnPost(post)" location="top">
+                <template #activator="{ props }">
+                  <v-icon
+                    v-bind="props"
+                    size="12"
+                    class="post-visibility-icon"
+                  >{{ post.visibilityIcon }}</v-icon>
+                </template>
+                <span>{{ post.visibilityLabel }}</span>
+              </v-tooltip>
             </span>
           </div>
           <div
@@ -259,7 +270,7 @@
         </div>
         <v-menu location="bottom end">
           <template #activator="{ props }">
-            <button class="post-options-btn" v-bind="props">
+            <button class="post-options-btn" v-bind="props" @click.stop>
               <v-icon size="20">mdi-dots-horizontal</v-icon>
             </button>
           </template>
@@ -310,7 +321,7 @@
       </div>
 
       <!-- Action buttons -->
-      <div class="post-actions">
+      <div class="post-actions" @click.stop>
         <button class="action-btn">
           <v-icon size="20">mdi-heart-outline</v-icon>
           <span>Like</span>
@@ -397,6 +408,11 @@ const photoPreviewUrl = computed(() =>
 );
 
 const isOwnPost = (post) => post.userId === currentUserId.value;
+
+const goToPost = (id) => {
+  if (!id) return;
+  router.push(`/posts/${id}`);
+};
 
 const openCreateDialog = (pickPhotoAfter = false) => {
   editingPostId.value = null;
@@ -487,12 +503,22 @@ const formatTime = (value) => {
   return date.toLocaleDateString();
 };
 
+const visibilityMeta = (name, id) => {
+  const n = name || (id === 2 ? "Friends" : id === 3 ? "Only me" : "Public");
+  if (n === "Friends") return { icon: "mdi-account-multiple-outline", label: "Friends" };
+  if (n === "Only me") return { icon: "mdi-lock-outline", label: "Only me" };
+  return { icon: "mdi-earth", label: "Public" };
+};
+
 const mapPost = (item) => {
   const feeling = feelingTypes.find((f) => f.id === item.feelingTypeId);
+  const visibility = visibilityMeta(item.visibilityName, item.visibilityTypeId);
   return {
     id: item.id,
     userId: item.userId,
     visibilityTypeId: item.visibilityTypeId,
+    visibilityIcon: visibility.icon,
+    visibilityLabel: visibility.label,
     feelingTypeId: item.feelingTypeId,
     imageFileName: item.images?.[0] || "",
     authorName: `${item.firstName || ""} ${item.lastName || ""}`.trim() || item.username,
@@ -720,12 +746,31 @@ const goToPeekProfile = () => {
   router.push(`/users/${id}`);
 };
 
+const onFriendsChanged = (event) => {
+  const detail = event?.detail;
+  if (!detail?.userId || !peekUser.value || detail.userId !== peekUser.value.id) return;
+  if (detail.status === "Accepted") {
+    peekSentLocal.value = false;
+    peekUser.value = {
+      ...peekUser.value,
+      friendshipStatus: "Accepted",
+      friendCount: (peekUser.value.friendCount ?? 0) + 1,
+    };
+  }
+  if (detail.status === "None") {
+    peekSentLocal.value = false;
+    peekUser.value = { ...peekUser.value, friendshipStatus: "None" };
+  }
+};
+
 onMounted(() => {
   document.addEventListener("click", closeAuthorPeek);
+  window.addEventListener("buzzup-friends-changed", onFriendsChanged);
 });
 
 onUnmounted(() => {
   document.removeEventListener("click", closeAuthorPeek);
+  window.removeEventListener("buzzup-friends-changed", onFriendsChanged);
 });
 
 const deletePost = async () => {
@@ -859,6 +904,10 @@ const deletePost = async () => {
   margin-top: 16px;
   overflow: visible;
   transition: all 0.3s ease;
+}
+
+.post-card-open {
+  cursor: pointer;
 }
 
 .post-card:hover {

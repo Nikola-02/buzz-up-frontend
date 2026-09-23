@@ -4,6 +4,7 @@ import SignUpPage from "@/views/SignUpPage.vue";
 import HomePage from "@/views/HomePage.vue";
 import ProfilePage from "@/views/ProfilePage.vue";
 import UserProfilePage from "@/views/UserProfilePage.vue";
+import PostPage from "@/views/PostPage.vue";
 import NotFoundPage from "@/views/NotFoundPage.vue";
 import ForgotPasswordPage from "@/views/ForgotPasswordPage.vue";
 import ResetPasswordPage from "@/views/ResetPasswordPage.vue";
@@ -30,6 +31,12 @@ const routes = [
     name: "UserProfile",
     component: UserProfilePage,
     meta: { title: "BuzzUp · Profile", layout: "navsidebar", requiresAuth: true },
+  },
+  {
+    path: "/posts/:id",
+    name: "Post",
+    component: PostPage,
+    meta: { title: "BuzzUp · Post", layout: "navsidebar", requiresAuth: true },
   },
   {
     path: "/admin",

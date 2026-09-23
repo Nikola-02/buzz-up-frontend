@@ -81,16 +81,22 @@
             <div class="info-card-title">
               <v-icon size="20">mdi-account-group-outline</v-icon>
               <span>Friends</span>
-              <span class="see-all">See all</span>
+              <span v-if="friends.length" class="see-all" @click="showFriendsDialog = true">See all</span>
             </div>
-            <div class="friends-grid">
-              <div v-for="friend in previewFriends" :key="friend.id" class="friend-preview">
+            <div v-if="friends.length" class="friends-grid">
+              <div
+                v-for="friend in previewFriends"
+                :key="friend.id"
+                class="friend-preview"
+                @click="goToFriend(friend.id)"
+              >
                 <v-avatar size="58" rounded="lg">
                   <img :src="friend.avatar" :alt="friend.name" />
                 </v-avatar>
                 <span class="friend-preview-name">{{ friend.name }}</span>
               </div>
             </div>
+            <p v-else class="bio-text empty-field">No friends yet</p>
           </div>
         </v-col>
 
@@ -121,7 +127,7 @@
           <div v-if="feedLoading" class="feed-empty">Loading posts...</div>
           <div v-else-if="!posts.length" class="feed-empty">No posts yet.</div>
 
-          <div v-for="post in posts" :key="post.id" class="post-card mt-4">
+          <div v-for="post in posts" :key="post.id" class="post-card post-card-open mt-4" @click="goToPost(post.id)">
             <div class="post-top">
               <v-avatar size="44">
                 <img :src="profileImageUrl" alt="Me" />
@@ -135,11 +141,21 @@
                   <v-icon size="12">mdi-clock-outline</v-icon>
                   {{ post.time }}
                   <span v-if="post.location"> · {{ post.location }}</span>
+                  <v-tooltip location="top">
+                    <template #activator="{ props }">
+                      <v-icon
+                        v-bind="props"
+                        size="12"
+                        class="post-visibility-icon"
+                      >{{ post.visibilityIcon }}</v-icon>
+                    </template>
+                    <span>{{ post.visibilityLabel }}</span>
+                  </v-tooltip>
                 </span>
               </div>
               <v-menu location="bottom end">
                 <template #activator="{ props }">
-                  <button class="post-options-btn" v-bind="props">
+                  <button class="post-options-btn" v-bind="props" @click.stop>
                     <v-icon size="20">mdi-dots-horizontal</v-icon>
                   </button>
                 </template>
@@ -180,7 +196,7 @@
               </div>
               <span class="reactions-right">{{ post.comments }} comments</span>
             </div>
-            <div class="post-actions">
+            <div class="post-actions" @click.stop>
               <button class="action-btn">
                 <v-icon size="20">mdi-heart-outline</v-icon>
                 <span>Like</span>
@@ -576,6 +592,51 @@
         </div>
       </v-card>
     </v-dialog>
+
+    <v-dialog v-model="showFriendsDialog" max-width="460">
+      <v-card class="friends-dialog" rounded="xl">
+        <div class="friends-dialog-header">
+          <span class="friends-dialog-title">Friends</span>
+          <v-btn icon variant="text" size="small" @click="showFriendsDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </div>
+        <v-divider></v-divider>
+        <div class="friends-dialog-search">
+          <v-text-field
+            v-model="friendSearchQuery"
+            density="compact"
+            placeholder="Search friends..."
+            prepend-inner-icon="mdi-magnify"
+            variant="outlined"
+            hide-details
+            rounded
+            class="friend-search-input"
+            clearable
+            @click:clear="friendSearchQuery = ''"
+          ></v-text-field>
+        </div>
+        <div class="friends-dialog-body" v-if="filteredFriends.length">
+          <div
+            v-for="friend in filteredFriends"
+            :key="friend.id"
+            class="friend-row"
+            @click="goToFriend(friend.id)"
+          >
+            <v-avatar size="50">
+              <img :src="friend.avatar" :alt="friend.name" />
+            </v-avatar>
+            <div class="friend-row-info">
+              <span class="friend-row-name">{{ friend.name }}</span>
+              <span class="friend-row-handle">@{{ friend.username }}</span>
+              <span class="friend-row-meta">{{ friend.postCount }} posts · {{ friend.friendCount }} friends</span>
+              <span v-if="friend.friendsSince" class="friend-row-meta">Friends since {{ friend.friendsSince }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-else class="friends-dialog-empty">No friends found</div>
+      </v-card>
+    </v-dialog>
     <SnackbarComponent
       v-model:show="showSnackbar"
       :color="snackbarColor"
@@ -585,7 +646,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
@@ -596,7 +658,13 @@ import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const theme = useTheme();
 const store = useStore();
+const router = useRouter();
 const isDark = computed(() => theme.global.name.value === "dark");
+
+const goToPost = (id) => {
+  if (!id) return;
+  router.push(`/posts/${id}`);
+};
 
 const profile = computed(() => store.getters.getProfile);
 
@@ -641,11 +709,21 @@ const formatTime = (value) => {
   return date.toLocaleDateString();
 };
 
+const visibilityMeta = (name, id) => {
+  const n = name || (id === 2 ? "Friends" : id === 3 ? "Only me" : "Public");
+  if (n === "Friends") return { icon: "mdi-account-multiple-outline", label: "Friends" };
+  if (n === "Only me") return { icon: "mdi-lock-outline", label: "Only me" };
+  return { icon: "mdi-earth", label: "Public" };
+};
+
 const mapPost = (item) => {
   const feeling = feelingTypes.find((f) => f.id === item.feelingTypeId);
+  const visibility = visibilityMeta(item.visibilityName, item.visibilityTypeId);
   return {
     id: item.id,
     visibilityTypeId: item.visibilityTypeId,
+    visibilityIcon: visibility.icon,
+    visibilityLabel: visibility.label,
     feelingTypeId: item.feelingTypeId,
     imageFileName: item.images?.[0] || "",
     title: item.title,
@@ -675,6 +753,58 @@ const loadMyPosts = async () => {
   }
 };
 
+const showFriendsDialog = ref(false);
+const friendSearchQuery = ref("");
+const friends = ref([]);
+const previewFriends = computed(() => friends.value.slice(0, 6));
+const filteredFriends = computed(() => {
+  const q = friendSearchQuery.value.toLowerCase().trim();
+  if (!q) return friends.value;
+  return friends.value.filter(
+    (f) =>
+      f.name.toLowerCase().includes(q) ||
+      (f.username || "").toLowerCase().includes(q)
+  );
+});
+
+watch(showFriendsDialog, (open) => {
+  if (!open) friendSearchQuery.value = "";
+});
+
+const formatFriendsSince = (dateStr) => {
+  const d = new Date(dateStr);
+  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}.`;
+};
+
+const mapFriend = (item) => ({
+  id: item.id,
+  name: `${item.firstName || ""} ${item.lastName || ""}`.trim() || item.username,
+  username: item.username,
+  avatar: `http://localhost:5001/temp/${item.image || "default.png"}`,
+  postCount: item.postCount ?? 0,
+  friendCount: item.friendCount ?? 0,
+  friendsSince: item.friendsSince ? formatFriendsSince(item.friendsSince) : "",
+});
+
+const loadFriends = async () => {
+  try {
+    const res = await AxiosApi.get("/friendships");
+    const list = Array.isArray(res.data) ? res.data : res.data.data || res.data.Data || [];
+    friends.value = list.map(mapFriend);
+  } catch (e) {
+    friends.value = [];
+  }
+};
+
+const goToFriend = (id) => {
+  showFriendsDialog.value = false;
+  if (!id || id === store.getters.getUser?.id) {
+    router.push("/profile");
+    return;
+  }
+  router.push(`/users/${id}`);
+};
+
 onMounted(async () => {
   const userId = store.getters.getUser?.id;
   if (userId) {
@@ -685,7 +815,11 @@ onMounted(async () => {
       // Profile fetch failed
     }
   }
-  await loadMyPosts();
+  await Promise.all([loadMyPosts(), loadFriends()]);
+  window.addEventListener("buzzup-friends-changed", loadFriends);
+});
+onUnmounted(() => {
+  window.removeEventListener("buzzup-friends-changed", loadFriends);
 });
 
 const visibilityTypes = [
@@ -1031,14 +1165,6 @@ const saveProfile = async () => {
   }
 };
 
-const previewFriends = ref([
-  { id: 1, name: "John", avatar: "https://randomuser.me/api/portraits/men/1.jpg" },
-  { id: 2, name: "Jane", avatar: "https://randomuser.me/api/portraits/women/2.jpg" },
-  { id: 3, name: "Mike", avatar: "https://randomuser.me/api/portraits/men/3.jpg" },
-  { id: 4, name: "Emily", avatar: "https://randomuser.me/api/portraits/women/4.jpg" },
-  { id: 5, name: "Chris", avatar: "https://randomuser.me/api/portraits/men/5.jpg" },
-  { id: 6, name: "Sarah", avatar: "https://randomuser.me/api/portraits/women/6.jpg" },
-]);
 </script>
 
 <style scoped>
@@ -1299,11 +1425,82 @@ const previewFriends = ref([
 }
 
 .friend-preview-name {
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 700;
   color: var(--text-primary);
   text-align: center;
   transition: color 0.2s;
+}
+
+.friends-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.friends-dialog-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+
+.friends-dialog-search {
+  padding: 12px 16px 0;
+}
+
+.friend-search-input :deep(.v-field) {
+  font-size: 0.85rem;
+}
+
+.friends-dialog-body {
+  padding: 12px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.friends-dialog-empty {
+  padding: 24px 16px 28px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.friend-row:hover {
+  background: var(--hover-bg);
+}
+
+.friend-row-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.friend-row-name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.friend-row-handle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.friend-row-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 /* ===== CREATE POST ===== */
@@ -1384,6 +1581,10 @@ const previewFriends = ref([
   border-radius: 16px;
   overflow: hidden;
   transition: all 0.3s ease;
+}
+
+.post-card-open {
+  cursor: pointer;
 }
 
 .post-card:hover {

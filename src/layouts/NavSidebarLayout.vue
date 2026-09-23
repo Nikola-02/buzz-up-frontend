@@ -7,10 +7,11 @@
         <span class="brand-text">Buzz<span class="brand-accent">Up</span></span>
       </div>
 
-      <div class="navbar-search">
+      <div class="navbar-search" @click.stop>
         <v-text-field
+          v-model="navSearchQuery"
           density="compact"
-          placeholder="Search BuzzUp..."
+          placeholder="Search people..."
           prepend-inner-icon="mdi-magnify"
           variant="solo"
           flat
@@ -18,7 +19,35 @@
           bg-color="rgba(255,255,255,0.12)"
           class="search-field"
           rounded
+          clearable
+          autocomplete="off"
+          @focus="showNavSearch = true"
+          @click:clear="clearNavSearch"
         ></v-text-field>
+        <div
+          v-if="showNavSearch && navSearchQuery.trim()"
+          class="nav-search-dropdown"
+          :class="{ 'dark-mode': isDarkTheme }"
+        >
+          <div v-if="navSearchLoading" class="nav-search-empty">Searching...</div>
+          <template v-else-if="navSearchResults.length">
+            <div
+              v-for="person in navSearchResults"
+              :key="person.id"
+              class="nav-search-row"
+              @click="goToSearchUser(person.id)"
+            >
+              <v-avatar size="40">
+                <img :src="person.avatar" :alt="person.name" />
+              </v-avatar>
+              <div class="nav-search-info">
+                <span class="nav-search-name">{{ person.name }}</span>
+                <span class="nav-search-handle">@{{ person.username }}</span>
+              </div>
+            </div>
+          </template>
+          <div v-else class="nav-search-empty">No people found</div>
+        </div>
       </div>
 
       <div class="navbar-actions">
@@ -406,17 +435,14 @@
           </v-avatar>
           <div class="request-card-info">
             <span class="request-card-name">{{ req.name }}</span>
-            <span class="request-card-mutual"
-              >{{ req.mutualFriends }} mutual friends</span
-            >
           </div>
           <div class="request-card-actions">
             <v-btn
               size="small"
-              color="#0f3460"
               variant="flat"
-              class="req-dialog-btn"
+              class="req-dialog-btn accept"
               rounded
+              :disabled="isRequestBusy(req.id)"
               @click="acceptRequest(req.id)"
             >
               Accept request
@@ -426,6 +452,7 @@
               variant="tonal"
               class="req-dialog-btn decline"
               rounded
+              :disabled="isRequestBusy(req.id)"
               @click="declineRequest(req.id)"
             >
               Decline
@@ -442,11 +469,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useStore } from "vuex";
 import { useTheme } from "vuetify";
 import AxiosApi from "@/plugins/axios";
+import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const router = useRouter();
 const store = useStore();
@@ -468,6 +496,66 @@ const goToProfile = () => {
 const goToAdmin = () => {
   showUserMenu.value = false;
   router.push("/admin");
+};
+
+const currentUserId = computed(() => store.getters.getProfile?.id || store.getters.getUser?.id);
+const navSearchQuery = ref("");
+const navSearchResults = ref([]);
+const navSearchLoading = ref(false);
+const showNavSearch = ref(false);
+let navSearchTimer = null;
+
+const mapSearchUser = (item) => ({
+  id: item.id,
+  name: `${item.firstName || ""} ${item.lastName || ""}`.trim() || item.username,
+  username: item.username,
+  avatar: `http://localhost:5001/temp/${item.image || "default.png"}`,
+});
+
+const clearNavSearch = () => {
+  navSearchQuery.value = "";
+  navSearchResults.value = [];
+  showNavSearch.value = false;
+};
+
+const searchPeople = async () => {
+  const keyword = navSearchQuery.value.trim();
+  if (!keyword) {
+    navSearchResults.value = [];
+    navSearchLoading.value = false;
+    return;
+  }
+  navSearchLoading.value = true;
+  try {
+    const res = await AxiosApi.get("/users", {
+      params: { keyword, perPage: 8, page: 1 },
+    });
+    const list = res.data?.data || res.data?.Data || [];
+    navSearchResults.value = (Array.isArray(list) ? list : []).map(mapSearchUser);
+  } catch (e) {
+    navSearchResults.value = [];
+  } finally {
+    navSearchLoading.value = false;
+  }
+};
+
+watch(navSearchQuery, () => {
+  showNavSearch.value = true;
+  clearTimeout(navSearchTimer);
+  navSearchTimer = setTimeout(searchPeople, 300);
+});
+
+const goToSearchUser = (id) => {
+  clearNavSearch();
+  if (!id || id === currentUserId.value) {
+    router.push("/profile");
+    return;
+  }
+  router.push(`/users/${id}`);
+};
+
+const onDocClick = () => {
+  showNavSearch.value = false;
 };
 
 // Theme
@@ -554,13 +642,54 @@ const toggleFriendSearch = () => {
 // Friend requests
 const showRequestsDialog = ref(false);
 const friendRequests = ref([]);
+const busyRequestIds = ref([]);
 
-const acceptRequest = (id) => {
-  friendRequests.value = friendRequests.value.filter((r) => r.id !== id);
+const isRequestBusy = (id) => busyRequestIds.value.includes(id);
+
+const markRequestBusy = (id, busy) => {
+  busyRequestIds.value = busy
+    ? [...busyRequestIds.value, id]
+    : busyRequestIds.value.filter((x) => x !== id);
 };
 
-const declineRequest = (id) => {
-  friendRequests.value = friendRequests.value.filter((r) => r.id !== id);
+const acceptRequest = async (id) => {
+  if (isRequestBusy(id)) return;
+  markRequestBusy(id, true);
+  try {
+    await AxiosApi.post("/friendships/accept", { userId: id });
+    snackbarText.value = "You are now friends.";
+    snackbarColor.value = "green";
+    showSnackbar.value = true;
+    window.dispatchEvent(
+      new CustomEvent("buzzup-friends-changed", {
+        detail: { userId: id, status: "Accepted" },
+      })
+    );
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    markRequestBusy(id, false);
+  }
+};
+
+const declineRequest = async (id) => {
+  if (isRequestBusy(id)) return;
+  markRequestBusy(id, true);
+  try {
+    await AxiosApi.post("/friendships/reject", { userId: id });
+    snackbarText.value = "Friend request declined.";
+    snackbarColor.value = "green";
+    showSnackbar.value = true;
+    window.dispatchEvent(
+      new CustomEvent("buzzup-friends-changed", {
+        detail: { userId: id, status: "None" },
+      })
+    );
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    markRequestBusy(id, false);
+  }
 };
 
 const friends = ref([]);
@@ -586,13 +715,30 @@ const goToFriend = (id) => {
   router.push(`/users/${id}`);
 };
 
-const onFriendsChanged = () => loadFriends();
+const loadIncoming = async () => {
+  try {
+    const res = await AxiosApi.get("/friendships/incoming");
+    const list = Array.isArray(res.data) ? res.data : res.data.data || res.data.Data || [];
+    friendRequests.value = list.map(mapFriend);
+  } catch (e) {
+    friendRequests.value = [];
+  }
+};
+
+const onFriendsChanged = () => {
+  loadFriends();
+  loadIncoming();
+};
 onMounted(() => {
   loadFriends();
+  loadIncoming();
   window.addEventListener("buzzup-friends-changed", onFriendsChanged);
+  document.addEventListener("click", onDocClick);
 });
 onUnmounted(() => {
   window.removeEventListener("buzzup-friends-changed", onFriendsChanged);
+  document.removeEventListener("click", onDocClick);
+  clearTimeout(navSearchTimer);
 });
 
 const filteredOnlineFriends = computed(() => {
@@ -683,9 +829,73 @@ const logout = () => {
 }
 
 .navbar-search {
+  position: relative;
   flex: 1 1 420px;
   margin: 0 24px;
   max-width: 480px;
+}
+
+.nav-search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+  padding: 8px;
+  z-index: 20;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.nav-search-dropdown.dark-mode {
+  background: #1e1e2e;
+}
+
+.nav-search-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.nav-search-row:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.nav-search-dropdown.dark-mode .nav-search-row:hover {
+  background: #2a2a3e;
+}
+
+.nav-search-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nav-search-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.nav-search-dropdown.dark-mode .nav-search-name {
+  color: #e2e8f0;
+}
+
+.nav-search-handle {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.nav-search-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #64748b;
 }
 
 .search-field {
@@ -1227,9 +1437,9 @@ const logout = () => {
   display: block;
 }
 
-.request-card-mutual {
-  font-size: 0.78rem;
-  opacity: 0.6;
+.req-dialog-btn.accept {
+  background: #1a1a2e !important;
+  color: #fff !important;
 }
 
 .request-card-actions {
