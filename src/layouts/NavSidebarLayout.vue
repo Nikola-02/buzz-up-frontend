@@ -308,6 +308,7 @@
             v-for="friend in filteredOnlineFriends"
             :key="friend.id"
             class="friend-item"
+            @click="goToFriend(friend.id)"
           >
             <div class="friend-avatar-wrapper">
               <v-avatar size="40">
@@ -318,7 +319,7 @@
             <div class="friend-info">
               <span class="friend-name">{{ friend.name }}</span>
             </div>
-            <v-btn icon variant="text" size="small" class="friend-msg-btn">
+            <v-btn icon variant="text" size="small" class="friend-msg-btn" @click.stop>
               <v-icon size="18">mdi-message-text-outline</v-icon>
             </v-btn>
           </div>
@@ -336,6 +337,7 @@
             v-for="friend in filteredOfflineFriends"
             :key="friend.id"
             class="friend-item offline"
+            @click="goToFriend(friend.id)"
           >
             <div class="friend-avatar-wrapper">
               <v-avatar size="40">
@@ -346,16 +348,25 @@
             <div class="friend-info">
               <span class="friend-name">{{ friend.name }}</span>
             </div>
-            <v-btn icon variant="text" size="small" class="friend-msg-btn">
+            <v-btn icon variant="text" size="small" class="friend-msg-btn" @click.stop>
               <v-icon size="18">mdi-message-text-outline</v-icon>
             </v-btn>
           </div>
         </div>
       </div>
 
-      <!-- No results -->
       <div
         v-if="
+          !friends.length &&
+          !showFriendSearch
+        "
+        class="no-results"
+      >
+        <v-icon size="40" color="#bec3c9">mdi-account-group-outline</v-icon>
+        <span>No friends yet</span>
+      </div>
+      <div
+        v-else-if="
           showFriendSearch &&
           !filteredOnlineFriends.length &&
           !filteredOfflineFriends.length
@@ -408,7 +419,7 @@
               rounded
               @click="acceptRequest(req.id)"
             >
-              Accept
+              Accept request
             </v-btn>
             <v-btn
               size="small"
@@ -431,10 +442,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useStore } from "vuex";
 import { useTheme } from "vuetify";
+import AxiosApi from "@/plugins/axios";
 
 const router = useRouter();
 const store = useStore();
@@ -541,26 +553,7 @@ const toggleFriendSearch = () => {
 
 // Friend requests
 const showRequestsDialog = ref(false);
-const friendRequests = ref([
-  {
-    id: 101,
-    name: "David Kim",
-    avatar: "https://randomuser.me/api/portraits/men/15.jpg",
-    mutualFriends: 3,
-  },
-  {
-    id: 102,
-    name: "Lisa Wang",
-    avatar: "https://randomuser.me/api/portraits/women/12.jpg",
-    mutualFriends: 7,
-  },
-  {
-    id: 103,
-    name: "Tom Harris",
-    avatar: "https://randomuser.me/api/portraits/men/22.jpg",
-    mutualFriends: 1,
-  },
-]);
+const friendRequests = ref([]);
 
 const acceptRequest = (id) => {
   friendRequests.value = friendRequests.value.filter((r) => r.id !== id);
@@ -570,44 +563,37 @@ const declineRequest = (id) => {
   friendRequests.value = friendRequests.value.filter((r) => r.id !== id);
 };
 
-const friends = ref([
-  {
-    id: 1,
-    name: "John Doe",
-    avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-    isOnline: true,
-  },
-  {
-    id: 2,
-    name: "Jane Smith",
-    avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-    isOnline: true,
-  },
-  {
-    id: 3,
-    name: "Mike Johnson",
-    avatar: "https://randomuser.me/api/portraits/men/3.jpg",
-    isOnline: false,
-  },
-  {
-    id: 4,
-    name: "Emily Davis",
-    avatar: "https://randomuser.me/api/portraits/women/4.jpg",
-    isOnline: true,
-  },
-  {
-    id: 5,
-    name: "Chris Wilson",
-    avatar: "https://randomuser.me/api/portraits/men/5.jpg",
-    isOnline: false,
-  },
-  {
-    id: 6,
-    name: "Sarah Brown",
-    avatar: "https://randomuser.me/api/portraits/women/6.jpg",
-    isOnline: false,
-  },
-]);
+const friends = ref([]);
+
+const mapFriend = (item) => ({
+  id: item.id,
+  name: `${item.firstName || ""} ${item.lastName || ""}`.trim() || item.username,
+  avatar: `http://localhost:5001/temp/${item.image || "default.png"}`,
+  isOnline: !!item.isOnline,
+});
+
+const loadFriends = async () => {
+  try {
+    const res = await AxiosApi.get("/friendships");
+    const list = Array.isArray(res.data) ? res.data : res.data.data || res.data.Data || [];
+    friends.value = list.map(mapFriend);
+  } catch (e) {
+    friends.value = [];
+  }
+};
+
+const goToFriend = (id) => {
+  router.push(`/users/${id}`);
+};
+
+const onFriendsChanged = () => loadFriends();
+onMounted(() => {
+  loadFriends();
+  window.addEventListener("buzzup-friends-changed", onFriendsChanged);
+});
+onUnmounted(() => {
+  window.removeEventListener("buzzup-friends-changed", onFriendsChanged);
+});
 
 const filteredOnlineFriends = computed(() => {
   const q = friendSearchQuery.value.toLowerCase();

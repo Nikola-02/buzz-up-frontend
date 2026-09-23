@@ -9,3 +9,7 @@ export function showErrorSnackbar(message) {
   snackbarColor.value = "red";
   showSnackbar.value = true;
 }
+
+export function hideSnackbar() {
+  showSnackbar.value = false;
+}

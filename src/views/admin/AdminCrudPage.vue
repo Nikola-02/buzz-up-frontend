@@ -104,7 +104,8 @@
     </div>
 
     <!-- Create/Edit Dialog -->
-    <v-dialog v-model="showFormDialog" max-width="520" persistent>
+    <!-- Allow closing via ESC / clicking outside when not saving -->
+    <v-dialog v-model="showFormDialog" max-width="520" :persistent="saving" :z-index="3000">
       <v-card class="form-dialog" :class="{ 'dark-mode': isDark }">
         <div class="form-dialog-header">
           <h2 class="form-dialog-title">{{ isEditing ? 'Edit' : 'Create' }} {{ config.title.replace(/s$/, '') }}</h2>
@@ -113,66 +114,81 @@
           </v-btn>
         </div>
         <div class="form-dialog-body">
-          <v-form ref="formRef" @submit.prevent="saveItem">
+          <v-form :key="dialogKey" ref="formRef" @submit.prevent="saveItem">
             <div class="form-fields">
-              <template v-for="(field, idx) in visibleFields" :key="field.key">
-                <div v-if="field.half && idx + 1 < visibleFields.length && visibleFields[idx + 1]?.half && !field._rendered" class="form-row">
-                  <div class="form-field">
-                    <label class="form-label">{{ fieldLabel(field) }}{{ field.required ? ' *' : '' }}</label>
-                    <component
-                      :is="fieldComponent(field)"
-                      v-model="formData[field.key]"
-                      :placeholder="fieldPlaceholder(field)"
-                      :type="field.type === 'password' ? 'password' : field.type === 'email' ? 'email' : undefined"
-                      :rules="fieldRules(field)"
-                      :items="field.options"
+              <template v-for="field in visibleFields" :key="field.key">
+                <div class="form-field" :class="{ half: field.half }">
+                  <label class="form-label">{{ fieldLabel(field) }}{{ fieldIsRequired(field) ? ' *' : '' }}</label>
+                  <v-select
+                    v-if="field.type === 'select'"
+                    v-model="formData[field.key]"
+                    :placeholder="fieldPlaceholder(field)"
+                    :rules="fieldRules(field)"
+                    :items="field.options"
+                    variant="outlined"
+                    density="compact"
+                    rounded="lg"
+                    hide-details="auto"
+                    class="form-input"
+                  ></v-select>
+                  <v-textarea
+                    v-else-if="field.type === 'textarea'"
+                    v-model="formData[field.key]"
+                    :placeholder="fieldPlaceholder(field)"
+                    :rules="fieldRules(field)"
+                    :rows="2"
+                    auto-grow
+                    variant="outlined"
+                    density="compact"
+                    rounded="lg"
+                    hide-details="auto"
+                    class="form-input"
+                  ></v-textarea>
+                  <CountrySelect
+                    v-else-if="field.type === 'countrySelect'"
+                    v-model="formData[field.key]"
+                    :hint-name="adminCountryHint"
+                    :placeholder="fieldPlaceholder(field)"
+                    :rules="fieldRules(field)"
+                    input-class="form-input"
+                  />
+                  <template v-else-if="field.type === 'imageUpload'">
+                    <div v-if="editImagePreviewUrl" class="admin-edit-image-preview">
+                      <img :src="editImagePreviewUrl" alt="Profile preview" />
+                    </div>
+                    <v-file-input
+                      v-model="editImageFile"
+                      placeholder="Upload a photo"
+                      prepend-inner-icon="mdi-camera-outline"
+                      prepend-icon=""
+                      accept="image/*"
                       variant="outlined"
                       density="compact"
                       rounded="lg"
                       hide-details="auto"
                       class="form-input"
-                      v-bind="field.type === 'textarea' ? { rows: 2, autoGrow: true } : {}"
-                    ></component>
-                  </div>
-                  <div class="form-field">
-                    <label class="form-label">{{ fieldLabel(visibleFields[idx + 1]) }}{{ visibleFields[idx + 1].required ? ' *' : '' }}</label>
-                    <component
-                      :is="fieldComponent(visibleFields[idx + 1])"
-                      v-model="formData[visibleFields[idx + 1].key]"
-                      :placeholder="fieldPlaceholder(visibleFields[idx + 1])"
-                      :type="visibleFields[idx + 1].type === 'password' ? 'password' : visibleFields[idx + 1].type === 'email' ? 'email' : undefined"
-                      :rules="fieldRules(visibleFields[idx + 1])"
-                      :items="visibleFields[idx + 1].options"
-                      variant="outlined"
-                      density="compact"
-                      rounded="lg"
-                      hide-details="auto"
-                      class="form-input"
-                      v-bind="visibleFields[idx + 1].type === 'textarea' ? { rows: 2, autoGrow: true } : {}"
-                    ></component>
-                  </div>
-                </div>
-                <!-- Skip the second half field since it was rendered above -->
-                <div
-                  v-else-if="!field.half || !shouldSkip(idx)"
-                  class="form-field"
-                >
-                  <label class="form-label">{{ fieldLabel(field) }}{{ field.required ? ' *' : '' }}</label>
-                  <component
-                    :is="fieldComponent(field)"
+                      :loading="editImageUploading"
+                      :error-messages="editImageError"
+                      @update:model-value="onEditImageSelected"
+                    ></v-file-input>
+                    <span v-if="editUploadedImageFileName" class="admin-upload-success">
+                      <v-icon size="14" color="#22c55e">mdi-check-circle</v-icon>
+                      Image uploaded
+                    </span>
+                  </template>
+                  <v-text-field
+                    v-else
                     v-model="formData[field.key]"
                     :placeholder="fieldPlaceholder(field)"
                     :type="fieldInputType(field)"
                     :rules="fieldRules(field)"
-                    :items="field.options"
                     :max="field.type === 'date' ? today : undefined"
                     variant="outlined"
                     density="compact"
                     rounded="lg"
                     hide-details="auto"
                     class="form-input"
-                    v-bind="field.type === 'textarea' ? { rows: 2, autoGrow: true } : {}"
-                  ></component>
+                  ></v-text-field>
                 </div>
               </template>
             </div>
@@ -227,6 +243,9 @@ import { useRoute } from "vue-router";
 import { useTheme } from "vuetify";
 import AxiosApi from "@/plugins/axios";
 import { adminTables } from "@/config/adminTables.js";
+import { rules } from "@/plugins/validationMessages.js";
+import CountrySelect from "@/components/CountrySelect.vue";
+import { normalizeCountryId } from "@/services/countries";
 
 const route = useRoute();
 const theme = useTheme();
@@ -373,6 +392,59 @@ const isEditing = ref(false);
 const editingId = ref(null);
 const formData = ref({});
 
+/** Za preselect Country dropdown kada API šalje countryName uz countryId. */
+const adminCountryHint = ref("");
+
+/** Same temp URL as user profile images (see SignUp / admin table column format). */
+const TEMP_IMAGE_BASE = "http://localhost:5001/temp/";
+
+const editImageFile = ref(null);
+const editUploadedImageFileName = ref("");
+const editImageUploading = ref(false);
+const editImageError = ref("");
+const existingImageFileName = ref(null);
+
+const editImagePreviewUrl = computed(() => {
+  if (editUploadedImageFileName.value) {
+    return `${TEMP_IMAGE_BASE}${editUploadedImageFileName.value}`;
+  }
+  if (existingImageFileName.value) {
+    return `${TEMP_IMAGE_BASE}${existingImageFileName.value}`;
+  }
+  return "";
+});
+
+const onEditImageSelected = async (file) => {
+  editUploadedImageFileName.value = "";
+  editImageError.value = "";
+
+  if (!file) return;
+
+  editImageUploading.value = true;
+
+  const fd = new FormData();
+  fd.append("file", file);
+
+  try {
+    const response = await AxiosApi.post("/files", fd, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    editUploadedImageFileName.value = response.data.file;
+  } catch (error) {
+    editImageError.value =
+      error.response?.status === 415
+        ? "Unsupported file type. Use JPG, PNG, or JPEG."
+        : "Failed to upload image. Please try again.";
+    editImageFile.value = null;
+  } finally {
+    editImageUploading.value = false;
+  }
+};
+
+// Remount the form when switching between Create/Edit.
+// Prevents stale values lingering between modal openings.
+const dialogKey = computed(() => (isEditing.value ? `edit-${editingId.value}` : "create"));
+
 const visibleFields = computed(() => {
   if (!config.value) return [];
   return config.value.form.fields.filter((f) => {
@@ -398,10 +470,12 @@ const fieldRules = (field) => {
   return field.rules || [];
 };
 
-const fieldComponent = (field) => {
-  if (field.type === "textarea") return "v-textarea";
-  if (field.type === "select") return "v-select";
-  return "v-text-field";
+const fieldIsRequired = (field) => {
+  const rulesForMode = fieldRules(field);
+  if (Array.isArray(rulesForMode) && rulesForMode.length > 0) {
+    return rulesForMode.includes(rules.required);
+  }
+  return !!field.required;
 };
 
 const fieldInputType = (field) => {
@@ -411,31 +485,55 @@ const fieldInputType = (field) => {
   return undefined;
 };
 
-const shouldSkip = (idx) => {
-  if (idx === 0) return false;
-  const prev = visibleFields.value[idx - 1];
-  const curr = visibleFields.value[idx];
-  return prev?.half && curr?.half;
-};
-
 const openCreateDialog = () => {
   isEditing.value = false;
   editingId.value = null;
+  adminCountryHint.value = "";
   formData.value = { ...config.value.form.defaults };
+  existingImageFileName.value = null;
+  editUploadedImageFileName.value = "";
+  editImageFile.value = null;
+  editImageError.value = "";
   showFormDialog.value = true;
 };
 
 const openEditDialog = (item) => {
   isEditing.value = true;
   editingId.value = item.id;
+  const cn = item?.countryName ?? item?.CountryName;
+  adminCountryHint.value = typeof cn === "string" ? cn.trim() : "";
+  existingImageFileName.value = null;
+  editUploadedImageFileName.value = "";
+  editImageFile.value = null;
+  editImageError.value = "";
+
   const data = {};
   config.value.form.fields.forEach((f) => {
     if (f.type === "password") {
+      // Keep password input empty; leaving it empty on save means "keep current password".
       data[f.key] = "";
+    } else if (f.type === "imageUpload") {
+      // Image is handled via upload + preview; do not put fileName in formData.
+    } else if (f.type === "date") {
+      const raw = item[f.key];
+      if (!raw) {
+        data[f.key] = "";
+      } else if (typeof raw === "string") {
+        data[f.key] = raw.slice(0, 10);
+      } else if (raw instanceof Date) {
+        data[f.key] = raw.toISOString().slice(0, 10);
+      } else {
+        data[f.key] = "";
+      }
+    } else if (f.type === "countrySelect") {
+      const raw =
+        f.key === "countryId" ? item.countryId ?? item.CountryId : item[f.key];
+      data[f.key] = normalizeCountryId(raw);
     } else {
       data[f.key] = item[f.key] ?? "";
     }
   });
+  existingImageFileName.value = item.image || null;
   formData.value = data;
   showFormDialog.value = true;
 };
@@ -448,9 +546,36 @@ const saveItem = async () => {
   try {
     const payload = { ...formData.value };
 
+    if (tableName.value === "users" && isEditing.value) {
+      if (editUploadedImageFileName.value) {
+        payload.image = editUploadedImageFileName.value;
+      } else {
+        delete payload.image;
+      }
+      ["countryId", "city", "workplace", "university"].forEach((k) => {
+        if (payload[k] === "" || payload[k] === undefined) payload[k] = null;
+      });
+      if (!payload.dateOfBirth) payload.dateOfBirth = null;
+    }
+
+    // For password fields, treat empty value as "not provided".
+    // Backend can then keep the old password (edit) or auto-generate (create).
     config.value.form.fields.forEach((f) => {
-      if (f.type === "password" && isEditing.value && !payload[f.key]) {
-        payload[f.key] = null;
+      if (f.type !== "password") return;
+
+      // If password is edit-only, don't send it at all on create.
+      if (!isEditing.value && f.editOnly) {
+        delete payload[f.key];
+        return;
+      }
+
+      const v = payload[f.key];
+      if (v === undefined || v === null) return;
+
+      if (typeof v === "string") {
+        payload[f.key] = v.trim() ? v : null;
+      } else {
+        payload[f.key] = !v ? null : v;
       }
     });
 
@@ -724,7 +849,7 @@ const deleteItem = async () => {
   --text-primary: #0f172a;
   --text-secondary: #64748b;
   --text-muted: #94a3b8;
-  --divider: #e2e8f0;
+  --divider: #cbd5e1;
   --hover-bg: #f1f5f9;
   border-radius: 16px !important;
   overflow: hidden;
@@ -762,28 +887,47 @@ const deleteItem = async () => {
 
 .form-dialog-body {
   padding: 20px 24px 24px;
+  position: relative;
+  z-index: 1;
+}
+
+.admin-edit-image-preview {
+  margin-bottom: 10px;
+}
+
+.admin-edit-image-preview img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--divider);
+}
+
+.admin-upload-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: #22c55e;
+  margin-top: 6px;
 }
 
 .form-fields {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 16px;
-}
-
-.form-row {
-  display: flex;
-  gap: 12px;
-}
-
-.form-row .form-field {
-  flex: 1;
 }
 
 .form-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  grid-column: 1 / -1;
+}
+
+.form-field.half {
+  grid-column: span 1;
 }
 
 .form-label {
@@ -796,11 +940,38 @@ const deleteItem = async () => {
 .form-input .v-field {
   font-size: 0.88rem;
   background: var(--card-bg) !important;
+  pointer-events: auto !important;
+  min-height: 44px !important;
 }
 
 .form-input .v-field input,
 .form-input .v-field textarea {
   color: var(--text-primary) !important;
+  pointer-events: auto !important;
+}
+
+.form-input {
+  width: 100%;
+  display: block;
+}
+
+.form-input.v-input {
+  min-height: 44px !important;
+}
+
+.form-input .v-field__field {
+  min-height: 44px !important;
+  align-items: center;
+}
+
+@media (max-width: 700px) {
+  .form-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .form-field.half {
+    grid-column: 1 / -1;
+  }
 }
 
 .form-input .v-field input::placeholder,
@@ -810,6 +981,11 @@ const deleteItem = async () => {
 
 .form-input .v-field__outline {
   color: var(--divider) !important;
+}
+
+.form-dialog:not(.dark-mode) .form-input .v-field__outline,
+.delete-dialog:not(.dark-mode) .form-input .v-field__outline {
+  color: #94a3b8 !important;
 }
 
 .form-input .v-field--focused .v-field__outline {

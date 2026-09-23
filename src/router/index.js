@@ -3,12 +3,14 @@ import Login from "@/views/LoginPage.vue";
 import SignUpPage from "@/views/SignUpPage.vue";
 import HomePage from "@/views/HomePage.vue";
 import ProfilePage from "@/views/ProfilePage.vue";
+import UserProfilePage from "@/views/UserProfilePage.vue";
 import NotFoundPage from "@/views/NotFoundPage.vue";
 import ForgotPasswordPage from "@/views/ForgotPasswordPage.vue";
 import ResetPasswordPage from "@/views/ResetPasswordPage.vue";
 import AdminDashboardPage from "@/views/AdminDashboardPage.vue";
 import AdminCrudPage from "@/views/admin/AdminCrudPage.vue";
 import { store } from "@/store/store";
+import { hideSnackbar } from "@/snackbar";
 
 const routes = [
   {
@@ -22,6 +24,12 @@ const routes = [
     name: "Profile",
     component: ProfilePage,
     meta: { title: "BuzzUp · My Profile", layout: "navsidebar", requiresAuth: true },
+  },
+  {
+    path: "/users/:id",
+    name: "UserProfile",
+    component: UserProfilePage,
+    meta: { title: "BuzzUp · Profile", layout: "navsidebar", requiresAuth: true },
   },
   {
     path: "/admin",
@@ -104,6 +112,10 @@ router.beforeEach(async (to, from, next) => {
   }
 
   next();
+});
+
+router.afterEach(() => {
+  hideSnackbar();
 });
 
 export default router;

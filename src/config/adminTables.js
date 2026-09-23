@@ -12,7 +12,7 @@ import { rules } from "@/plugins/validationMessages.js";
  *     - chip: { colorMap } renders the cell as a v-chip
  * - searchKeys: which fields to filter on when searching
  * - form.fields: array of field definitions for create/edit dialog
- *     - key, label, type (text|email|password|date|select|textarea)
+ *     - key, label, type (text|email|password|date|select|textarea|imageUpload|countrySelect)
  *     - required, rules[], placeholder
  *     - half: true to render side-by-side with next field
  *     - createOnly / editOnly: show field only in that mode
@@ -33,6 +33,10 @@ export const adminTables = {
       { key: "email", label: "Email" },
       { key: "firstName", label: "First Name" },
       { key: "lastName", label: "Last Name" },
+      { key: "countryName", label: "Country", format: (v) => v || "" },
+      { key: "city", label: "City", format: (v) => v || "" },
+      { key: "workplace", label: "Workplace", format: (v) => v || "" },
+      { key: "university", label: "University", format: (v) => v || "" },
       {
         key: "image",
         label: "Image",
@@ -86,13 +90,64 @@ export const adminTables = {
         {
           key: "password",
           label: "Password",
-          editLabel: "New Password",
           type: "password",
           required: false,
-          createRules: [rules.required],
+          createRules: [
+            (v) => (typeof v === "string" ? v.trim().length > 0 : !!v) || "Password is required",
+          ],
           editRules: [],
-          placeholder: "Password",
-          editPlaceholder: "Leave blank to keep current",
+          // Keep input visually empty until user types (no placeholder text pre-filling).
+          placeholder: "",
+          editPlaceholder: "",
+        },
+        {
+          key: "image",
+          label: "Profile Image",
+          type: "imageUpload",
+          editOnly: true,
+        },
+        {
+          key: "countryId",
+          label: "Country",
+          type: "countrySelect",
+          editOnly: true,
+          half: true,
+          placeholder: "Select country",
+          editRules: [],
+        },
+        {
+          key: "city",
+          label: "City",
+          type: "text",
+          editOnly: true,
+          half: true,
+          placeholder: "City",
+          editRules: [],
+        },
+        {
+          key: "workplace",
+          label: "Workplace",
+          type: "text",
+          editOnly: true,
+          half: true,
+          placeholder: "Workplace",
+          editRules: [],
+        },
+        {
+          key: "university",
+          label: "University",
+          type: "text",
+          editOnly: true,
+          half: true,
+          placeholder: "University",
+          editRules: [],
+        },
+        {
+          key: "dateOfBirth",
+          label: "Date of Birth",
+          type: "date",
+          editOnly: true,
+          editRules: [rules.noFutureDate],
         },
       ],
     },

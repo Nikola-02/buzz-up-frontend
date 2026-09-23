@@ -185,16 +185,12 @@
               <div class="input-row">
                 <div class="input-group">
                   <label class="input-label optional-label">Country</label>
-                  <v-text-field
-                    v-model="user.country"
-                    placeholder="Country"
-                    prepend-inner-icon="mdi-earth"
-                    variant="outlined"
+                  <CountrySelect
+                    v-model="user.countryId"
+                    placeholder="Select country"
                     density="comfortable"
-                    rounded="lg"
-                    hide-details="auto"
-                    class="modern-input"
-                  ></v-text-field>
+                    input-class="modern-input"
+                  />
                 </div>
                 <div class="input-group">
                   <label class="input-label optional-label">City</label>
@@ -290,6 +286,8 @@ import { useRouter } from "vue-router";
 import AxiosApi from "@/plugins/axios";
 import { rules } from "@/plugins/validationMessages.js";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
+import CountrySelect from "@/components/CountrySelect.vue";
+import { normalizeCountryId } from "@/services/countries";
 
 const today = computed(() => new Date().toISOString().split("T")[0]);
 
@@ -318,7 +316,7 @@ const user = ref({
   lastName: "",
   password: "",
   image: null,
-  country: "",
+  countryId: null,
   city: "",
   workplace: "",
   university: "",
@@ -365,7 +363,7 @@ const register = async () => {
     lastName: user.value.lastName,
     password: user.value.password,
     image: uploadedFileName.value || null,
-    country: user.value.country || null,
+    countryId: normalizeCountryId(user.value.countryId),
     city: user.value.city || null,
     workplace: user.value.workplace || null,
     university: user.value.university || null,

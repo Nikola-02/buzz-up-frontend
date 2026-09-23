@@ -41,4 +41,9 @@ const layoutComponent = computed(() => {
   width: 100%;
   height: 100%;
 }
+
+/* Global input outline color (light theme) */
+.v-theme--light .v-field__outline {
+  color: #94a3b8 !important;
+}
 </style>

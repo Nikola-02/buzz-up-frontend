@@ -19,7 +19,7 @@ const props = defineProps({
 
 const emit = defineEmits(["update:show"]);
 
-const snackbar = ref(props.show);
+const snackbar = ref(false);
 
 watch(
   () => props.show,
@@ -28,8 +28,11 @@ watch(
   }
 );
 
+watch(snackbar, (val) => {
+  if (!val) emit("update:show", false);
+});
+
 const closeSnackbar = () => {
   snackbar.value = false;
-  emit("update:show", false);
 };
 </script>

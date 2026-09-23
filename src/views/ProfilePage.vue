@@ -12,7 +12,7 @@
         <v-avatar size="120" class="profile-avatar">
           <img :src="profileImageUrl" alt="Profile photo" />
         </v-avatar>
-        <v-btn icon size="small" class="avatar-edit-btn">
+        <v-btn icon size="small" class="avatar-edit-btn" @click="openEditProfile">
           <v-icon size="18">mdi-camera</v-icon>
         </v-btn>
       </div>
@@ -45,9 +45,7 @@
             <div class="about-items">
               <div class="about-item">
                 <v-icon size="18" class="about-icon">mdi-map-marker-outline</v-icon>
-                <span v-if="profile?.city || profile?.country">
-                  Lives in {{ [profile.city, profile.country].filter(Boolean).join(', ') }}
-                </span>
+                <span v-if="locationLine">Lives in {{ locationLine }}</span>
                 <span v-else class="empty-field">Location</span>
               </div>
               <div class="about-item">
@@ -104,40 +102,71 @@
               <v-avatar size="44" class="create-avatar">
                 <img :src="profileImageUrl" alt="Me" />
               </v-avatar>
-              <div class="create-post-input">
+              <button type="button" class="create-post-input" @click="openCreatePostDialog()">
                 What's buzzing, {{ profile?.firstName }}?
-              </div>
+              </button>
             </div>
             <div class="create-post-bottom">
-              <button class="create-action">
+              <button type="button" class="create-action" @click="openCreatePostDialog(true)">
                 <v-icon size="18" color="#f44336">mdi-image-outline</v-icon>
                 <span>Photo</span>
               </button>
-              <button class="create-action">
-                <v-icon size="18" color="#ffc107">mdi-emoticon-happy-outline</v-icon>
+              <button type="button" class="create-action" @click="openCreatePostDialog()">
+                <span class="feeling-emoji feeling-emoji-sm">😊</span>
                 <span>Feeling</span>
               </button>
             </div>
           </div>
 
-          <!-- Posts -->
+          <div v-if="feedLoading" class="feed-empty">Loading posts...</div>
+          <div v-else-if="!posts.length" class="feed-empty">No posts yet.</div>
+
           <div v-for="post in posts" :key="post.id" class="post-card mt-4">
             <div class="post-top">
               <v-avatar size="44">
                 <img :src="profileImageUrl" alt="Me" />
               </v-avatar>
               <div class="post-meta">
-                <span class="post-author">{{ profile?.firstName }} {{ profile?.lastName }}</span>
+                <span class="post-author">
+                  {{ profile?.firstName }} {{ profile?.lastName }}
+                  <span v-if="post.feelingName" class="post-feeling"> is feeling {{ post.feelingEmoji }} {{ post.feelingName }}</span>
+                </span>
                 <span class="post-timestamp">
                   <v-icon size="12">mdi-clock-outline</v-icon>
                   {{ post.time }}
+                  <span v-if="post.location"> · {{ post.location }}</span>
                 </span>
               </div>
-              <button class="post-options-btn">
-                <v-icon size="20">mdi-dots-horizontal</v-icon>
-              </button>
+              <v-menu location="bottom end">
+                <template #activator="{ props }">
+                  <button class="post-options-btn" v-bind="props">
+                    <v-icon size="20">mdi-dots-horizontal</v-icon>
+                  </button>
+                </template>
+                <v-list density="compact">
+                  <v-list-item @click="openEditPostDialog(post)">
+                    <template #prepend>
+                      <v-icon size="18">mdi-pencil-outline</v-icon>
+                    </template>
+                    <v-list-item-title>Edit</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="savePostSoon">
+                    <template #prepend>
+                      <v-icon size="18">mdi-bookmark-outline</v-icon>
+                    </template>
+                    <v-list-item-title>Save</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item @click="openDeletePostDialog(post)">
+                    <template #prepend>
+                      <v-icon size="18" color="#f44336">mdi-delete-outline</v-icon>
+                    </template>
+                    <v-list-item-title>Delete</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
             </div>
-            <p class="post-body">{{ post.content }}</p>
+            <p class="post-title">{{ post.title }}</p>
+            <p v-if="post.description" class="post-body">{{ post.description }}</p>
             <div v-if="post.image" class="post-image-wrapper">
               <img :src="post.image" class="post-image" />
             </div>
@@ -160,7 +189,7 @@
                 <v-icon size="20">mdi-comment-processing-outline</v-icon>
                 <span>Comment</span>
               </button>
-              <button class="action-btn">
+              <button class="action-btn" @click="sharePost(post)">
                 <v-icon size="20">mdi-share-variant-outline</v-icon>
                 <span>Share</span>
               </button>
@@ -169,8 +198,164 @@
         </v-col>
       </v-row>
     </div>
+    <v-dialog v-model="showEditPostDialog" max-width="520" :persistent="savingPost">
+      <v-card class="create-dialog" :class="{ 'dark-mode': isDark }">
+        <div class="create-dialog-header">
+          <h2 class="create-dialog-title">{{ editingPostId ? "Edit post" : "Create post" }}</h2>
+          <v-btn icon variant="text" size="small" :disabled="savingPost" @click="closeEditPostDialog">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </div>
+        <div class="create-dialog-body">
+          <div class="create-dialog-user">
+            <v-avatar size="40" class="create-avatar">
+              <img :src="profileImageUrl" alt="Me" />
+            </v-avatar>
+            <div class="create-dialog-user-meta">
+              <div class="create-dialog-name">
+                {{ profile?.firstName }} {{ profile?.lastName }}
+                <span v-if="selectedFeeling" class="create-feeling-text"> is feeling {{ selectedFeeling.name }}</span>
+              </div>
+              <v-select
+                v-model="editPost.visibilityTypeId"
+                :items="visibilityTypes"
+                item-title="name"
+                item-value="id"
+                variant="outlined"
+                density="compact"
+                hide-details
+                rounded="lg"
+                class="create-visibility"
+              >
+                <template #prepend-inner>
+                  <v-icon size="16">mdi-earth</v-icon>
+                </template>
+              </v-select>
+            </div>
+          </div>
+          <v-text-field
+            v-model="editPost.title"
+            placeholder="Title"
+            variant="outlined"
+            density="comfortable"
+            hide-details="auto"
+            maxlength="30"
+            counter="30"
+            rounded="lg"
+            class="create-field"
+          />
+          <v-textarea
+            v-model="editPost.description"
+            placeholder="What's on your mind?"
+            variant="outlined"
+            density="comfortable"
+            hide-details="auto"
+            rows="3"
+            auto-grow
+            maxlength="50"
+            counter="50"
+            rounded="lg"
+            class="create-field"
+          />
+          <v-text-field
+            v-model="editPost.location"
+            placeholder="Location (optional)"
+            variant="outlined"
+            density="comfortable"
+            hide-details="auto"
+            prepend-inner-icon="mdi-map-marker-outline"
+            maxlength="50"
+            rounded="lg"
+            class="create-field"
+          />
+          <div v-if="postUploadedFileName" class="create-photo-preview">
+            <img :src="postPhotoPreviewUrl" alt="Post photo" />
+            <v-btn class="create-photo-remove" icon size="small" variant="flat" @click="clearPostPhoto">
+              <v-icon>mdi-close</v-icon>
+            </v-btn>
+          </div>
+          <input
+            ref="postPhotoInput"
+            type="file"
+            accept=".jpg,.jpeg,.png"
+            hidden
+            @change="onPostPhotoSelected"
+          />
+          <div class="create-dialog-actions">
+            <span class="create-actions-label">Add to your post</span>
+            <div class="create-actions-right">
+              <button type="button" class="create-action" :disabled="postImageUploading" @click="pickPostPhoto">
+                <v-icon size="22" color="#f44336">mdi-image-outline</v-icon>
+              </button>
+              <v-menu location="top" :close-on-content-click="true">
+                <template #activator="{ props }">
+                  <button type="button" class="create-action feeling-emoji-btn" v-bind="props" title="Feeling">
+                    {{ selectedFeeling?.emoji || "😊" }}
+                  </button>
+                </template>
+                <v-list class="feeling-menu" density="compact">
+                  <v-list-item :active="editPost.feelingTypeId == null" @click="editPost.feelingTypeId = null">
+                    <template #prepend>
+                      <span class="feeling-emoji">🚫</span>
+                    </template>
+                    <v-list-item-title>None</v-list-item-title>
+                  </v-list-item>
+                  <v-list-item
+                    v-for="feeling in feelingTypes"
+                    :key="feeling.id"
+                    :active="editPost.feelingTypeId === feeling.id"
+                    @click="editPost.feelingTypeId = feeling.id"
+                  >
+                    <template #prepend>
+                      <span class="feeling-emoji">{{ feeling.emoji }}</span>
+                    </template>
+                    <v-list-item-title>{{ feeling.name }}</v-list-item-title>
+                  </v-list-item>
+                </v-list>
+              </v-menu>
+            </div>
+          </div>
+          <v-btn
+            block
+            color="#ffc107"
+            rounded="lg"
+            class="create-submit"
+            :loading="savingPost || postImageUploading"
+            :disabled="!editPost.title"
+            @click="savePost"
+          >
+            {{ editingPostId ? "Save" : "Post" }}
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="showDeletePostDialog" max-width="400">
+      <v-card class="create-dialog" :class="{ 'dark-mode': isDark }">
+        <div class="create-dialog-header">
+          <h2 class="create-dialog-title">Delete post</h2>
+          <v-btn icon variant="text" size="small" :disabled="deletingPost" @click="showDeletePostDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </div>
+        <div class="create-dialog-body">
+          <p class="delete-confirm-text">Are you sure you want to delete this post?</p>
+          <v-btn
+            block
+            color="#f44336"
+            rounded="lg"
+            class="create-submit"
+            :loading="deletingPost"
+            @click="deleteMyPost"
+          >
+            Delete
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
     <!-- Edit Profile Dialog -->
-    <v-dialog v-model="showEditDialog" max-width="560" persistent>
+    <v-dialog v-model="showEditDialog" max-width="560" :persistent="saving">
       <v-card class="edit-dialog" :class="{ 'dark-mode': isDark }">
         <div class="edit-dialog-header">
           <h2 class="edit-dialog-title">Edit Profile</h2>
@@ -303,15 +488,13 @@
             <div class="edit-row">
               <div class="edit-field">
                 <label class="edit-label">Country</label>
-                <v-text-field
-                  v-model="editForm.country"
-                  placeholder="Country"
-                  variant="outlined"
+                <CountrySelect
+                  v-model="editForm.countryId"
+                  :hint-name="editCountryHint"
+                  placeholder="Select country"
                   density="compact"
-                  rounded="lg"
-                  hide-details="auto"
-                  class="edit-input"
-                ></v-text-field>
+                  input-class="edit-input"
+                />
               </div>
               <div class="edit-field">
                 <label class="edit-label">City</label>
@@ -393,6 +576,11 @@
         </div>
       </v-card>
     </v-dialog>
+    <SnackbarComponent
+      v-model:show="showSnackbar"
+      :color="snackbarColor"
+      :text="snackbarText"
+    />
   </div>
 </template>
 
@@ -402,6 +590,9 @@ import { useTheme } from "vuetify";
 import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
 import { rules } from "@/plugins/validationMessages.js";
+import CountrySelect from "@/components/CountrySelect.vue";
+import { countryDisplayName, normalizeCountryId } from "@/services/countries";
+import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const theme = useTheme();
 const store = useStore();
@@ -409,19 +600,278 @@ const isDark = computed(() => theme.global.name.value === "dark");
 
 const profile = computed(() => store.getters.getProfile);
 
+const countryLabel = computed(() => countryDisplayName(profile.value));
+
+/** Lokacija: oba → "City, Country"; samo jedno → to polje; ništa → prazan string. */
+const locationLine = computed(() => {
+  const city = (profile.value?.city ?? "").toString().trim();
+  const country = countryLabel.value.trim();
+  if (!city && !country) return "";
+  if (city && country) return `${city}, ${country}`;
+  if (city) return city;
+  return country;
+});
+
+const feelingTypes = [
+  { id: 1, name: "Happy", emoji: "😊" },
+  { id: 2, name: "Sad", emoji: "😢" },
+  { id: 3, name: "Excited", emoji: "🤩" },
+  { id: 4, name: "Angry", emoji: "😠" },
+  { id: 5, name: "Thoughtful", emoji: "🤔" },
+  { id: 6, name: "Loved", emoji: "😍" },
+];
+
+const parseApiDate = (value) => {
+  const raw = String(value);
+  if (/[zZ]|[+-]\d{2}:\d{2}$/.test(raw)) return new Date(raw);
+  return new Date(`${raw}Z`);
+};
+
+const formatTime = (value) => {
+  if (!value) return "";
+  const date = parseApiDate(value);
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  return date.toLocaleDateString();
+};
+
+const mapPost = (item) => {
+  const feeling = feelingTypes.find((f) => f.id === item.feelingTypeId);
+  return {
+    id: item.id,
+    visibilityTypeId: item.visibilityTypeId,
+    feelingTypeId: item.feelingTypeId,
+    imageFileName: item.images?.[0] || "",
+    title: item.title,
+    description: item.description,
+    location: item.location,
+    feelingName: item.feelingName,
+    feelingEmoji: feeling?.emoji || "",
+    image: item.images?.[0] ? `http://localhost:5001/temp/${item.images[0]}` : "",
+    time: formatTime(item.createdAt),
+    likes: 0,
+    comments: 0,
+  };
+};
+
+const feedLoading = ref(false);
+const posts = ref([]);
+
+const loadMyPosts = async () => {
+  feedLoading.value = true;
+  try {
+    const res = await AxiosApi.get("/posts/my", { params: { perPage: 20, page: 1 } });
+    posts.value = (res.data.data || res.data.Data || []).map(mapPost);
+  } catch (e) {
+    posts.value = [];
+  } finally {
+    feedLoading.value = false;
+  }
+};
+
 onMounted(async () => {
-  if (!store.getters.getProfile) {
-    const userId = store.getters.getUser?.id;
-    if (userId) {
-      try {
-        const res = await AxiosApi.get(`/users/${userId}`);
-        store.commit("setProfile", res.data);
-      } catch (e) {
-        // Profile fetch failed
-      }
+  const userId = store.getters.getUser?.id;
+  if (userId) {
+    try {
+      const res = await AxiosApi.get(`/users/${userId}`);
+      store.commit("setProfile", res.data);
+    } catch (e) {
+      // Profile fetch failed
     }
   }
+  await loadMyPosts();
 });
+
+const visibilityTypes = [
+  { id: 1, name: "Public" },
+  { id: 2, name: "Friends" },
+  { id: 3, name: "Only me" },
+];
+
+const emptyEditPost = () => ({
+  title: "",
+  description: "",
+  location: "",
+  visibilityTypeId: 1,
+  feelingTypeId: null,
+});
+
+const showEditPostDialog = ref(false);
+const showDeletePostDialog = ref(false);
+const savingPost = ref(false);
+const deletingPost = ref(false);
+const editingPostId = ref(null);
+const postToDelete = ref(null);
+const postImageUploading = ref(false);
+const postUploadedFileName = ref("");
+const postPhotoInput = ref(null);
+const editPost = ref(emptyEditPost());
+const selectedFeeling = computed(
+  () => feelingTypes.find((f) => f.id === editPost.value.feelingTypeId) || null,
+);
+const postPhotoPreviewUrl = computed(() =>
+  postUploadedFileName.value ? `http://localhost:5001/temp/${postUploadedFileName.value}` : "",
+);
+
+const openCreatePostDialog = (pickPhotoAfter = false) => {
+  editingPostId.value = null;
+  editPost.value = emptyEditPost();
+  postUploadedFileName.value = "";
+  showEditPostDialog.value = true;
+  if (pickPhotoAfter === true) {
+    setTimeout(() => pickPostPhoto(), 250);
+  }
+};
+
+const openEditPostDialog = (post) => {
+  editingPostId.value = post.id;
+  editPost.value = {
+    title: post.title || "",
+    description: post.description || "",
+    location: post.location || "",
+    visibilityTypeId: post.visibilityTypeId || 1,
+    feelingTypeId: post.feelingTypeId ?? null,
+  };
+  postUploadedFileName.value = post.imageFileName || "";
+  showEditPostDialog.value = true;
+};
+
+const closeEditPostDialog = () => {
+  if (savingPost.value) return;
+  showEditPostDialog.value = false;
+};
+
+const openDeletePostDialog = (post) => {
+  postToDelete.value = post;
+  showDeletePostDialog.value = true;
+};
+
+const sharePost = async (post) => {
+  const url = `${window.location.origin}/posts/${post.id}`;
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: post.title || "BuzzUp post", url });
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    snackbarText.value = "Link copied.";
+    snackbarColor.value = "green";
+    showSnackbar.value = true;
+  } catch (e) {
+    if (e?.name === "AbortError") return;
+    snackbarText.value = "Could not copy link.";
+    snackbarColor.value = "red";
+    showSnackbar.value = true;
+  }
+};
+
+const savePostSoon = () => {
+  snackbarText.value = "Saving posts comes next.";
+  snackbarColor.value = "green";
+  showSnackbar.value = true;
+};
+
+const pickPostPhoto = () => {
+  postPhotoInput.value?.click();
+};
+
+const clearPostPhoto = () => {
+  postUploadedFileName.value = "";
+  if (postPhotoInput.value) postPhotoInput.value.value = "";
+};
+
+const onPostPhotoSelected = async (event) => {
+  const file = event.target?.files?.[0];
+  if (!file) return;
+
+  postImageUploading.value = true;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const response = await AxiosApi.post("/files", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    postUploadedFileName.value = response.data.file;
+  } catch (error) {
+    postUploadedFileName.value = "";
+    snackbarText.value =
+      error.response?.status === 415
+        ? "Unsupported file type. Use JPG, PNG, or JPEG."
+        : "Failed to upload image.";
+    snackbarColor.value = "red";
+    showSnackbar.value = true;
+  } finally {
+    postImageUploading.value = false;
+    if (postPhotoInput.value) postPhotoInput.value.value = "";
+  }
+};
+
+const savePost = async () => {
+  if (!editPost.value.title?.trim()) return;
+
+  savingPost.value = true;
+  try {
+    const payload = {
+      title: editPost.value.title.trim(),
+      description: editPost.value.description?.trim() || null,
+      location: editPost.value.location?.trim() || null,
+      visibilityTypeId: editPost.value.visibilityTypeId,
+      feelingTypeId: editPost.value.feelingTypeId,
+    };
+
+    if (editingPostId.value) {
+      await AxiosApi.put(`/posts/${editingPostId.value}`, {
+        ...payload,
+        image: postUploadedFileName.value || "",
+      });
+      snackbarText.value = "Post updated.";
+    } else {
+      await AxiosApi.post("/posts", {
+        ...payload,
+        image: postUploadedFileName.value || null,
+      });
+      snackbarText.value = "Post created.";
+    }
+
+    editPost.value = emptyEditPost();
+    postUploadedFileName.value = "";
+    editingPostId.value = null;
+    showEditPostDialog.value = false;
+    snackbarColor.value = "green";
+    showSnackbar.value = true;
+    await loadMyPosts();
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    savingPost.value = false;
+  }
+};
+
+const deleteMyPost = async () => {
+  if (!postToDelete.value) return;
+
+  deletingPost.value = true;
+  try {
+    await AxiosApi.delete(`/posts/${postToDelete.value.id}`);
+    showDeletePostDialog.value = false;
+    postToDelete.value = null;
+    snackbarText.value = "Post deleted.";
+    snackbarColor.value = "green";
+    showSnackbar.value = true;
+    await loadMyPosts();
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    deletingPost.value = false;
+  }
+};
 
 const profileImageUrl = computed(() => {
   const image = store.getters.userImage;
@@ -451,6 +901,8 @@ const imageError = ref("");
 const editImageFile = ref(null);
 const editUploadedFileName = ref("");
 
+const editCountryHint = ref("");
+
 const editForm = ref({
   firstName: "",
   lastName: "",
@@ -458,7 +910,7 @@ const editForm = ref({
   email: "",
   password: "",
   bio: "",
-  country: "",
+  countryId: null,
   city: "",
   workplace: "",
   university: "",
@@ -485,6 +937,7 @@ const openEditProfile = async () => {
   try {
     const res = await AxiosApi.get(`/users/${userId}`);
     const data = res.data;
+    editCountryHint.value = countryDisplayName(data);
     editForm.value = {
       firstName: data.firstName || "",
       lastName: data.lastName || "",
@@ -492,7 +945,7 @@ const openEditProfile = async () => {
       email: data.email || "",
       password: "",
       bio: data.bio || "",
-      country: data.country || "",
+      countryId: normalizeCountryId(data.countryId ?? data.CountryId ?? data.country?.id),
       city: data.city || "",
       workplace: data.workplace || "",
       university: data.university || "",
@@ -551,7 +1004,7 @@ const saveProfile = async () => {
     email: editForm.value.email,
     password: editForm.value.password || null,
     bio: editForm.value.bio || null,
-    country: editForm.value.country || null,
+    countryId: normalizeCountryId(editForm.value.countryId),
     city: editForm.value.city || null,
     workplace: editForm.value.workplace || null,
     university: editForm.value.university || null,
@@ -568,6 +1021,9 @@ const saveProfile = async () => {
     store.commit("setProfile", res.data);
 
     showEditDialog.value = false;
+    snackbarText.value = "Profile updated.";
+    snackbarColor.value = "green";
+    showSnackbar.value = true;
   } catch (e) {
     // Error handled by axios interceptor
   } finally {
@@ -582,33 +1038,6 @@ const previewFriends = ref([
   { id: 4, name: "Emily", avatar: "https://randomuser.me/api/portraits/women/4.jpg" },
   { id: 5, name: "Chris", avatar: "https://randomuser.me/api/portraits/men/5.jpg" },
   { id: 6, name: "Sarah", avatar: "https://randomuser.me/api/portraits/women/6.jpg" },
-]);
-
-const posts = ref([
-  {
-    id: 1,
-    content: "Just shipped a new feature! Feeling great about how the team came together on this one. Sometimes the best code is the code you write with awesome people.",
-    image: "",
-    time: "2 hours ago",
-    likes: 24,
-    comments: 5,
-  },
-  {
-    id: 2,
-    content: "Beautiful sunset from my balcony today. Belgrade never disappoints.",
-    image: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=600&h=400&fit=crop",
-    time: "Yesterday",
-    likes: 67,
-    comments: 12,
-  },
-  {
-    id: 3,
-    content: "New blog post is up! Wrote about building scalable Vue.js applications. Link in bio.",
-    image: "",
-    time: "3 days ago",
-    likes: 38,
-    comments: 8,
-  },
 ]);
 </script>
 
@@ -899,6 +1328,7 @@ const posts = ref([
 
 .create-post-input {
   flex: 1;
+  text-align: left;
   background: var(--hover-bg);
   border-radius: 24px;
   padding: 12px 20px;
@@ -907,6 +1337,11 @@ const posts = ref([
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
+}
+
+.feeling-emoji-sm {
+  font-size: 1.1rem;
+  line-height: 1;
 }
 
 .create-post-input:hover {
@@ -1000,6 +1435,27 @@ const posts = ref([
 .post-options-btn:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
+}
+
+.post-title {
+  padding: 14px 20px 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.post-feeling {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.feed-empty {
+  margin-top: 16px;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
 .post-body {
@@ -1306,5 +1762,188 @@ const posts = ref([
     flex-direction: column;
     text-align: center;
   }
+}
+</style>
+
+<style>
+.create-dialog {
+  --card-bg: #fff;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --hover-bg: #f1f5f9;
+  --divider: #e2e8f0;
+  border-radius: 16px !important;
+  overflow: hidden;
+  background: var(--card-bg) !important;
+}
+
+.create-dialog.dark-mode {
+  --card-bg: #1e1e2e;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --hover-bg: #2a2a3e;
+  --divider: #334155;
+}
+
+.create-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.create-dialog-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.create-dialog-header .v-btn {
+  color: var(--text-muted) !important;
+}
+
+.create-dialog-body {
+  padding: 18px 20px 20px;
+}
+
+.delete-confirm-text {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.create-dialog-user {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.create-dialog-user-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.create-dialog-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.create-feeling-text {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.create-visibility {
+  max-width: 160px;
+}
+
+.create-dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 6px 10px;
+  margin-bottom: 14px;
+}
+
+.create-actions-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.create-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.create-dialog-actions .create-action {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.create-dialog-actions .create-action:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.create-dialog-actions .create-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.feeling-emoji-btn {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  font-size: 1.85rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.feeling-emoji {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.feeling-menu {
+  border-radius: 12px !important;
+  min-width: 200px;
+}
+
+.create-dialog .create-field {
+  margin-bottom: 10px;
+}
+
+.create-photo-preview {
+  position: relative;
+  margin: 4px 0 14px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--divider);
+}
+
+.create-photo-preview img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+}
+
+.create-photo-remove {
+  position: absolute !important;
+  top: 8px;
+  right: 8px;
+}
+
+.create-dialog .create-avatar {
+  border: 2px solid var(--divider);
+}
+
+.create-dialog .create-submit {
+  font-weight: 700;
 }
 </style>
