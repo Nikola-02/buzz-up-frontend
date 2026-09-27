@@ -20,6 +20,10 @@
         <div class="profile-identity">
           <h1 class="profile-display-name">{{ profile?.firstName }} {{ profile?.lastName }}</h1>
           <span class="profile-handle">@{{ profile?.username }}</span>
+          <div class="profile-counts">
+            <span><strong>{{ headerPostCount }}</strong> posts</span>
+            <span><strong>{{ headerFriendCount }}</strong> friends</span>
+          </div>
         </div>
         <div class="profile-actions">
           <v-btn variant="outlined" class="edit-btn" rounded @click="openEditProfile">
@@ -166,12 +170,6 @@
                     </template>
                     <v-list-item-title>Edit</v-list-item-title>
                   </v-list-item>
-                  <v-list-item @click="savePostSoon">
-                    <template #prepend>
-                      <v-icon size="18">mdi-bookmark-outline</v-icon>
-                    </template>
-                    <v-list-item-title>Save</v-list-item-title>
-                  </v-list-item>
                   <v-list-item @click="openDeletePostDialog(post)">
                     <template #prepend>
                       <v-icon size="18" color="#f44336">mdi-delete-outline</v-icon>
@@ -187,27 +185,27 @@
               <img :src="post.image" class="post-image" />
             </div>
             <div class="reactions-bar">
-              <div class="reactions-left">
-                <div class="reaction-icons">
-                  <span class="reaction-emoji">❤️</span>
-                  <span class="reaction-emoji">👍</span>
+              <div v-if="post.likes" class="reactions-left">
+                <div v-if="post.usedReactionEmojis?.length" class="reaction-icons">
+                  <span
+                    v-for="emoji in post.usedReactionEmojis"
+                    :key="emoji"
+                    class="reaction-emoji"
+                  >{{ emoji }}</span>
                 </div>
                 <span class="reaction-count">{{ post.likes }}</span>
               </div>
               <span class="reactions-right">{{ post.comments }} comments</span>
             </div>
             <div class="post-actions" @click.stop>
-              <button class="action-btn">
-                <v-icon size="20">mdi-heart-outline</v-icon>
-                <span>Like</span>
-              </button>
+              <PostReactionButton :post="post" @reaction-changed="(next) => Object.assign(post, next)" />
               <button class="action-btn">
                 <v-icon size="20">mdi-comment-processing-outline</v-icon>
                 <span>Comment</span>
               </button>
-              <button class="action-btn" @click="sharePost(post)">
-                <v-icon size="20">mdi-share-variant-outline</v-icon>
-                <span>Share</span>
+              <button class="action-btn" @click="savePostSoon">
+                <v-icon size="20">mdi-bookmark-outline</v-icon>
+                <span>Save</span>
               </button>
             </div>
           </div>
@@ -470,23 +468,6 @@
             </div>
 
             <div class="edit-field">
-              <label class="edit-label">New Password</label>
-              <v-text-field
-                v-model="editForm.password"
-                placeholder="Leave blank to keep current"
-                :type="showEditPassword ? 'text' : 'password'"
-                :append-inner-icon="showEditPassword ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"
-                @click:append-inner="showEditPassword = !showEditPassword"
-                :rules="[optionalPassword]"
-                variant="outlined"
-                density="compact"
-                rounded="lg"
-                hide-details="auto"
-                class="edit-input"
-              ></v-text-field>
-            </div>
-
-            <div class="edit-field">
               <label class="edit-label">Bio</label>
               <v-textarea
                 v-model="editForm.bio"
@@ -653,6 +634,8 @@ import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
 import { rules } from "@/plugins/validationMessages.js";
 import CountrySelect from "@/components/CountrySelect.vue";
+import PostReactionButton from "@/components/PostReactionButton.vue";
+import { uniqueReactionEmojis } from "@/services/reactionTypes";
 import { countryDisplayName, normalizeCountryId } from "@/services/countries";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
@@ -733,7 +716,12 @@ const mapPost = (item) => {
     feelingEmoji: feeling?.emoji || "",
     image: item.images?.[0] ? `http://localhost:5001/temp/${item.images[0]}` : "",
     time: formatTime(item.createdAt),
-    likes: 0,
+    likes: item.reactionCount ?? 0,
+    myReactionTypeId: item.myReactionTypeId ?? null,
+    myReactionName: item.myReactionName || "",
+    myReactionIcon: item.myReactionIcon || "",
+    usedReactionTypeIds: item.usedReactionTypeIds || [],
+    usedReactionEmojis: uniqueReactionEmojis(item.usedReactionTypeIds),
     comments: 0,
   };
 };
@@ -756,6 +744,8 @@ const loadMyPosts = async () => {
 const showFriendsDialog = ref(false);
 const friendSearchQuery = ref("");
 const friends = ref([]);
+const headerPostCount = computed(() => profile.value?.postCount ?? posts.value.length);
+const headerFriendCount = computed(() => profile.value?.friendCount ?? friends.value.length);
 const previewFriends = computed(() => friends.value.slice(0, 6));
 const filteredFriends = computed(() => {
   const q = friendSearchQuery.value.toLowerCase().trim();
@@ -815,7 +805,17 @@ onMounted(async () => {
       // Profile fetch failed
     }
   }
-  await Promise.all([loadMyPosts(), loadFriends()]);
+  const refreshProfileCounts = async () => {
+    const userId = store.getters.getUser?.id;
+    if (!userId) return;
+    try {
+      const res = await AxiosApi.get(`/users/${userId}`);
+      store.commit("setProfile", res.data);
+    } catch (e) {
+      // interceptor
+    }
+  };
+  await Promise.all([loadMyPosts(), loadFriends(), refreshProfileCounts()]);
   window.addEventListener("buzzup-friends-changed", loadFriends);
 });
 onUnmounted(() => {
@@ -884,25 +884,6 @@ const closeEditPostDialog = () => {
 const openDeletePostDialog = (post) => {
   postToDelete.value = post;
   showDeletePostDialog.value = true;
-};
-
-const sharePost = async (post) => {
-  const url = `${window.location.origin}/posts/${post.id}`;
-  try {
-    if (navigator.share) {
-      await navigator.share({ title: post.title || "BuzzUp post", url });
-      return;
-    }
-    await navigator.clipboard.writeText(url);
-    snackbarText.value = "Link copied.";
-    snackbarColor.value = "green";
-    showSnackbar.value = true;
-  } catch (e) {
-    if (e?.name === "AbortError") return;
-    snackbarText.value = "Could not copy link.";
-    snackbarColor.value = "red";
-    showSnackbar.value = true;
-  }
 };
 
 const savePostSoon = () => {
@@ -1020,16 +1001,11 @@ const formatDate = (dateStr) => {
   return d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 };
 
-const optionalPassword = (v) => {
-  if (!v) return true;
-  return rules.password(v);
-};
-
 // ===== EDIT PROFILE =====
 const showEditDialog = ref(false);
 const editFormRef = ref(null);
 const saving = ref(false);
-const showEditPassword = ref(false);
+const editIsPrivate = ref(false);
 const imageUploading = ref(false);
 const imageError = ref("");
 const editImageFile = ref(null);
@@ -1042,7 +1018,6 @@ const editForm = ref({
   lastName: "",
   username: "",
   email: "",
-  password: "",
   bio: "",
   countryId: null,
   city: "",
@@ -1077,7 +1052,6 @@ const openEditProfile = async () => {
       lastName: data.lastName || "",
       username: data.username || "",
       email: data.email || "",
-      password: "",
       bio: data.bio || "",
       countryId: normalizeCountryId(data.countryId ?? data.CountryId ?? data.country?.id),
       city: data.city || "",
@@ -1087,7 +1061,7 @@ const openEditProfile = async () => {
       website: data.website || "",
       image: data.image || "",
     };
-    showEditPassword.value = false;
+    editIsPrivate.value = !!data.isPrivate;
     editUploadedFileName.value = "";
     editImageFile.value = null;
     imageError.value = "";
@@ -1136,7 +1110,7 @@ const saveProfile = async () => {
     lastName: editForm.value.lastName,
     username: editForm.value.username,
     email: editForm.value.email,
-    password: editForm.value.password || null,
+    password: null,
     bio: editForm.value.bio || null,
     countryId: normalizeCountryId(editForm.value.countryId),
     city: editForm.value.city || null,
@@ -1145,6 +1119,7 @@ const saveProfile = async () => {
     dateOfBirth: editForm.value.dateOfBirth || null,
     website: editForm.value.website || null,
     image: editUploadedFileName.value || editForm.value.image || null,
+    isPrivate: editIsPrivate.value,
   };
 
   try {
@@ -1282,6 +1257,18 @@ const saveProfile = async () => {
   color: var(--text-muted);
   display: block;
   margin-top: 2px;
+}
+
+.profile-counts {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.profile-counts strong {
+  color: var(--text-primary);
 }
 
 .profile-stats-inline {
@@ -1699,7 +1686,8 @@ const saveProfile = async () => {
 }
 
 .reaction-emoji {
-  font-size: 0.85rem;
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .reaction-count {

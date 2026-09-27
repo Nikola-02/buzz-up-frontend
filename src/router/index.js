@@ -10,6 +10,7 @@ import ForgotPasswordPage from "@/views/ForgotPasswordPage.vue";
 import ResetPasswordPage from "@/views/ResetPasswordPage.vue";
 import AdminDashboardPage from "@/views/AdminDashboardPage.vue";
 import AdminCrudPage from "@/views/admin/AdminCrudPage.vue";
+import SettingsPage from "@/views/SettingsPage.vue";
 import { store } from "@/store/store";
 import { hideSnackbar } from "@/snackbar";
 
@@ -37,6 +38,12 @@ const routes = [
     name: "Post",
     component: PostPage,
     meta: { title: "BuzzUp · Post", layout: "navsidebar", requiresAuth: true },
+  },
+  {
+    path: "/settings",
+    name: "Settings",
+    component: SettingsPage,
+    meta: { title: "BuzzUp · Settings", layout: "navsidebar", requiresAuth: true },
   },
   {
     path: "/admin",

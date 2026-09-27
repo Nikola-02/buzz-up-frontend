@@ -333,6 +333,7 @@ const fetchItems = async () => {
         keyword: search.value?.trim() || undefined,
         page: page.value,
         perPage: perPage.value,
+        ...(tableName.value === "users" ? { adminView: true } : {}),
       },
     });
     const mapped = mapResponseToPagination(res.data);
@@ -390,6 +391,7 @@ const formRef = ref(null);
 const saving = ref(false);
 const isEditing = ref(false);
 const editingId = ref(null);
+const editingItem = ref(null);
 const formData = ref({});
 
 /** Za preselect Country dropdown kada API šalje countryName uz countryId. */
@@ -488,6 +490,7 @@ const fieldInputType = (field) => {
 const openCreateDialog = () => {
   isEditing.value = false;
   editingId.value = null;
+  editingItem.value = null;
   adminCountryHint.value = "";
   formData.value = { ...config.value.form.defaults };
   existingImageFileName.value = null;
@@ -500,6 +503,7 @@ const openCreateDialog = () => {
 const openEditDialog = (item) => {
   isEditing.value = true;
   editingId.value = item.id;
+  editingItem.value = item;
   const cn = item?.countryName ?? item?.CountryName;
   adminCountryHint.value = typeof cn === "string" ? cn.trim() : "";
   existingImageFileName.value = null;
@@ -546,16 +550,17 @@ const saveItem = async () => {
   try {
     const payload = { ...formData.value };
 
-    if (tableName.value === "users" && isEditing.value) {
-      if (editUploadedImageFileName.value) {
-        payload.image = editUploadedImageFileName.value;
-      } else {
-        delete payload.image;
-      }
-      ["countryId", "city", "workplace", "university"].forEach((k) => {
-        if (payload[k] === "" || payload[k] === undefined) payload[k] = null;
-      });
-      if (!payload.dateOfBirth) payload.dateOfBirth = null;
+    if (tableName.value === "users" && isEditing.value && editingItem.value) {
+      const src = editingItem.value;
+      payload.image = src.image || null;
+      payload.countryId = src.countryId ?? src.CountryId ?? null;
+      payload.city = src.city || null;
+      payload.workplace = src.workplace || null;
+      payload.university = src.university || null;
+      payload.dateOfBirth = src.dateOfBirth || null;
+      payload.website = src.website || null;
+      payload.bio = src.bio || null;
+      payload.isPrivate = !!src.isPrivate;
     }
 
     // For password fields, treat empty value as "not provided".

@@ -81,9 +81,11 @@
             <div class="notif-header">
               <span class="notif-title">Notifications</span>
               <v-btn
+                v-if="unreadNotifications > 0"
                 variant="text"
                 size="x-small"
                 class="mark-read-btn"
+                :disabled="markingAllRead"
                 @click="markAllRead"
               >
                 Mark all as read
@@ -100,7 +102,7 @@
                 :key="notif.id"
                 class="notif-item"
                 :class="{ 'notif-unread': !notif.read }"
-                @click="notif.read = true"
+                @click="openNotification(notif)"
               >
                 <template v-slot:prepend>
                   <v-avatar size="40">
@@ -118,6 +120,9 @@
                 </template>
               </v-list-item>
             </v-list>
+            <div v-else-if="notificationsLoading" class="notif-empty">
+              <span>Loading...</span>
+            </div>
             <div v-else class="notif-empty">
               <v-icon size="36" color="#bec3c9">mdi-bell-check-outline</v-icon>
               <span>No notifications</span>
@@ -175,32 +180,19 @@
                 <v-list-item-title>My Profile</v-list-item-title>
               </v-list-item>
 
+              <v-list-item @click="goToSettings" class="dropdown-item">
+                <template v-slot:prepend>
+                  <v-icon size="20">mdi-cog-outline</v-icon>
+                </template>
+                <v-list-item-title>Settings</v-list-item-title>
+              </v-list-item>
+
               <!-- Admin Dashboard (only for Admin role) -->
               <v-list-item v-if="store.getters.isAdmin" @click="goToAdmin" class="dropdown-item">
                 <template v-slot:prepend>
                   <v-icon size="20">mdi-shield-lock-outline</v-icon>
                 </template>
                 <v-list-item-title>Admin</v-list-item-title>
-              </v-list-item>
-
-              <!-- Theme toggle -->
-              <v-list-item class="dropdown-item" @click="toggleTheme">
-                <template v-slot:prepend>
-                  <v-icon size="20">{{
-                    isDarkTheme ? "mdi-weather-sunny" : "mdi-weather-night"
-                  }}</v-icon>
-                </template>
-                <v-list-item-title>Theme</v-list-item-title>
-                <template v-slot:append>
-                  <v-chip
-                    size="x-small"
-                    :color="isDarkTheme ? '#ffc107' : '#1a1a2e'"
-                    variant="flat"
-                    class="theme-chip"
-                  >
-                    {{ isDarkTheme ? "Dark" : "Light" }}
-                  </v-chip>
-                </template>
               </v-list-item>
 
               <v-divider class="my-1"></v-divider>
@@ -430,11 +422,13 @@
       <v-divider></v-divider>
       <div class="requests-dialog-body" v-if="friendRequests.length">
         <div v-for="req in friendRequests" :key="req.id" class="request-card">
-          <v-avatar size="50">
-            <img :src="req.avatar" :alt="req.name" />
-          </v-avatar>
-          <div class="request-card-info">
-            <span class="request-card-name">{{ req.name }}</span>
+          <div class="request-card-person" @click="goToRequestProfile(req.id)">
+            <v-avatar size="50">
+              <img :src="req.avatar" :alt="req.name" />
+            </v-avatar>
+            <div class="request-card-info">
+              <span class="request-card-name">{{ req.name }}</span>
+            </div>
           </div>
           <div class="request-card-actions">
             <v-btn
@@ -493,6 +487,11 @@ const goToProfile = () => {
   router.push("/profile");
 };
 
+const goToSettings = () => {
+  showUserMenu.value = false;
+  router.push("/settings");
+};
+
 const goToAdmin = () => {
   showUserMenu.value = false;
   router.push("/admin");
@@ -504,6 +503,7 @@ const navSearchResults = ref([]);
 const navSearchLoading = ref(false);
 const showNavSearch = ref(false);
 let navSearchTimer = null;
+let navSearchSeq = 0;
 
 const mapSearchUser = (item) => ({
   id: item.id,
@@ -520,28 +520,41 @@ const clearNavSearch = () => {
 
 const searchPeople = async () => {
   const keyword = navSearchQuery.value.trim();
+  const requestId = ++navSearchSeq;
   if (!keyword) {
     navSearchResults.value = [];
     navSearchLoading.value = false;
     return;
   }
-  navSearchLoading.value = true;
   try {
     const res = await AxiosApi.get("/users", {
       params: { keyword, perPage: 8, page: 1 },
     });
+    if (requestId !== navSearchSeq) return;
     const list = res.data?.data || res.data?.Data || [];
     navSearchResults.value = (Array.isArray(list) ? list : []).map(mapSearchUser);
   } catch (e) {
+    if (requestId !== navSearchSeq) return;
     navSearchResults.value = [];
   } finally {
-    navSearchLoading.value = false;
+    if (requestId === navSearchSeq) {
+      navSearchLoading.value = false;
+    }
   }
 };
 
 watch(navSearchQuery, () => {
   showNavSearch.value = true;
   clearTimeout(navSearchTimer);
+  const keyword = navSearchQuery.value.trim();
+  if (!keyword) {
+    navSearchSeq += 1;
+    navSearchResults.value = [];
+    navSearchLoading.value = false;
+    return;
+  }
+  navSearchResults.value = [];
+  navSearchLoading.value = true;
   navSearchTimer = setTimeout(searchPeople, 300);
 });
 
@@ -560,65 +573,115 @@ const onDocClick = () => {
 
 // Theme
 const isDarkTheme = computed(() => theme.global.name.value === "dark");
-const toggleTheme = () => {
-  theme.global.name.value =
-    theme.global.name.value === "light" ? "dark" : "light";
-};
 
 // Notifications
 const showNotifications = ref(false);
-const notifications = ref([
-  {
-    id: 1,
-    name: "Jane Smith",
-    avatar: "https://randomuser.me/api/portraits/women/2.jpg",
-    action: "liked your post.",
-    time: "2 min ago",
-    read: false,
-  },
-  {
-    id: 2,
-    name: "Mike Johnson",
-    avatar: "https://randomuser.me/api/portraits/men/3.jpg",
-    action: "sent you a friend request.",
-    time: "15 min ago",
-    read: false,
-  },
-  {
-    id: 3,
-    name: "Emily Davis",
-    avatar: "https://randomuser.me/api/portraits/women/4.jpg",
-    action: "commented on your photo.",
-    time: "1 hour ago",
-    read: false,
-  },
-  {
-    id: 4,
-    name: "John Doe",
-    avatar: "https://randomuser.me/api/portraits/men/1.jpg",
-    action: "shared your post.",
-    time: "3 hours ago",
-    read: true,
-  },
-  {
-    id: 5,
-    name: "Sarah Brown",
-    avatar: "https://randomuser.me/api/portraits/women/6.jpg",
-    action: "started following you.",
-    time: "Yesterday",
-    read: true,
-  },
-]);
+const notifications = ref([]);
+const notificationsLoading = ref(false);
+
+const parseApiDate = (value) => {
+  const raw = String(value);
+  if (/[zZ]|[+-]\d{2}:\d{2}$/.test(raw)) return new Date(raw);
+  return new Date(`${raw}Z`);
+};
+
+const formatNotifTime = (value) => {
+  if (!value) return "";
+  const date = parseApiDate(value);
+  const diffMs = Date.now() - date.getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  return date.toLocaleDateString();
+};
+
+const notificationAction = (item) => {
+  if (item.type === "FriendRequest") return "sent you a friend request.";
+  if (item.type === "FriendAccepted") return "accepted your friend request.";
+  if (item.type === "Comment") return "commented on your post.";
+  if (item.type === "Reaction") {
+    const name = (item.reactionTypeName || "").toLowerCase();
+    if (name === "like") return "liked your post.";
+    if (name) return `left a ${name} reaction on your post.`;
+    return "left a reaction on your post.";
+  }
+  return "sent you a notification.";
+};
+
+const mapNotification = (item) => ({
+  id: item.id,
+  actorId: item.actorId,
+  postId: item.postId,
+  type: item.type,
+  name: `${item.actorFirstName || ""} ${item.actorLastName || ""}`.trim() || item.actorUsername,
+  avatar: `http://localhost:5001/temp/${item.actorImage || "default.png"}`,
+  action: notificationAction(item),
+  time: formatNotifTime(item.createdAt),
+  read: !!item.isRead,
+});
+
+const loadNotifications = async () => {
+  notificationsLoading.value = notifications.value.length === 0;
+  try {
+    const res = await AxiosApi.get("/notifications");
+    const list = Array.isArray(res.data) ? res.data : res.data.data || res.data.Data || [];
+    notifications.value = list.map(mapNotification);
+  } catch (e) {
+    notifications.value = [];
+  } finally {
+    notificationsLoading.value = false;
+  }
+};
 
 const unreadNotifications = computed(() => {
   return notifications.value.filter((n) => !n.read).length;
 });
 
-const markAllRead = () => {
-  notifications.value.forEach((n) => {
-    n.read = true;
-  });
+const markingAllRead = ref(false);
+
+const markAllRead = async () => {
+  if (markingAllRead.value || unreadNotifications.value === 0) return;
+  markingAllRead.value = true;
+  try {
+    await AxiosApi.post("/notifications/read");
+    notifications.value.forEach((n) => {
+      n.read = true;
+    });
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    markingAllRead.value = false;
+  }
 };
+
+const openNotification = async (notif) => {
+  if (!notif.read) {
+    try {
+      await AxiosApi.post(`/notifications/${notif.id}/read`);
+      notif.read = true;
+    } catch (e) {
+      // Axios interceptor already shows the error snackbar
+    }
+  }
+  showNotifications.value = false;
+  if (notif.postId) {
+    router.push(`/posts/${notif.postId}`);
+    return;
+  }
+  if (!notif.actorId || notif.actorId === currentUserId.value) {
+    router.push("/profile");
+    return;
+  }
+  router.push(`/users/${notif.actorId}`);
+};
+
+watch(showNotifications, (open) => {
+  if (open) loadNotifications();
+});
 
 // Activity status
 const myStatus = ref("active");
@@ -715,6 +778,11 @@ const goToFriend = (id) => {
   router.push(`/users/${id}`);
 };
 
+const goToRequestProfile = (id) => {
+  showRequestsDialog.value = false;
+  goToFriend(id);
+};
+
 const loadIncoming = async () => {
   try {
     const res = await AxiosApi.get("/friendships/incoming");
@@ -728,10 +796,12 @@ const loadIncoming = async () => {
 const onFriendsChanged = () => {
   loadFriends();
   loadIncoming();
+  loadNotifications();
 };
 onMounted(() => {
   loadFriends();
   loadIncoming();
+  loadNotifications();
   window.addEventListener("buzzup-friends-changed", onFriendsChanged);
   document.addEventListener("click", onDocClick);
 });
@@ -1426,9 +1496,22 @@ const logout = () => {
   background: rgba(0, 0, 0, 0.05);
 }
 
+.request-card-person {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
 .request-card-info {
   flex: 1;
   min-width: 0;
+}
+
+.request-card-name:hover {
+  text-decoration: underline;
 }
 
 .request-card-name {
@@ -1438,7 +1521,7 @@ const logout = () => {
 }
 
 .req-dialog-btn.accept {
-  background: #1a1a2e !important;
+  background: linear-gradient(135deg, #1a1a2e, #0f3460) !important;
   color: #fff !important;
 }
 

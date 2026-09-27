@@ -193,6 +193,30 @@
       </v-card>
     </v-dialog>
 
+    <v-dialog v-model="showUnfriendDialog" max-width="400">
+      <v-card class="create-dialog" :class="{ 'dark-mode': isDark }">
+        <div class="create-dialog-header">
+          <h2 class="create-dialog-title">Unfriend</h2>
+          <v-btn icon variant="text" size="small" :disabled="unfriending" @click="showUnfriendDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </div>
+        <div class="create-dialog-body">
+          <p class="delete-confirm-text">Are you sure you want to unfriend {{ peekName }}?</p>
+          <v-btn
+            block
+            color="#f44336"
+            rounded="lg"
+            class="create-submit"
+            :loading="unfriending"
+            @click="confirmPeekUnfriend"
+          >
+            Unfriend
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
+
     <div v-if="feedLoading" class="feed-empty">Loading posts...</div>
     <div v-else-if="!posts.length" class="feed-empty">No posts yet. Create the first one.</div>
 
@@ -255,12 +279,27 @@
               <v-btn
                 v-if="showPeekPrimaryAction"
                 class="author-peek-add"
+                :class="{ 'is-friends': peekIsFriends }"
                 rounded
                 size="small"
                 :disabled="peekPrimaryDisabled"
                 @click="onPeekPrimaryAction"
               >
-                {{ peekPrimaryLabel }}
+                <span class="friend-btn-swap">
+                  <span class="friend-btn-main">{{ peekPrimaryLabel }}</span>
+                  <span v-if="peekIsFriends" class="friend-btn-unfriend">Unfriend</span>
+                </span>
+              </v-btn>
+              <v-btn
+                v-if="peekCanAccept"
+                class="author-peek-decline"
+                variant="tonal"
+                rounded
+                size="small"
+                :disabled="peekSending"
+                @click="declinePeekFriendRequest"
+              >
+                Decline
               </v-btn>
               <v-btn variant="outlined" rounded size="small" class="author-peek-view" @click="goToPeekProfile">
                 View Profile
@@ -268,26 +307,20 @@
             </div>
           </div>
         </div>
-        <v-menu location="bottom end">
+        <v-menu v-if="isOwnPost(post)" location="bottom end">
           <template #activator="{ props }">
             <button class="post-options-btn" v-bind="props" @click.stop>
               <v-icon size="20">mdi-dots-horizontal</v-icon>
             </button>
           </template>
           <v-list density="compact">
-            <v-list-item v-if="isOwnPost(post)" @click="openEditDialog(post)">
+            <v-list-item @click="openEditDialog(post)">
               <template #prepend>
                 <v-icon size="18">mdi-pencil-outline</v-icon>
               </template>
               <v-list-item-title>Edit</v-list-item-title>
             </v-list-item>
-            <v-list-item @click="savePostSoon">
-              <template #prepend>
-                <v-icon size="18">mdi-bookmark-outline</v-icon>
-              </template>
-              <v-list-item-title>Save</v-list-item-title>
-            </v-list-item>
-            <v-list-item v-if="isOwnPost(post)" @click="openDeleteDialog(post)">
+            <v-list-item @click="openDeleteDialog(post)">
               <template #prepend>
                 <v-icon size="18" color="#f44336">mdi-delete-outline</v-icon>
               </template>
@@ -308,10 +341,13 @@
 
       <!-- Reactions bar -->
       <div class="reactions-bar">
-        <div class="reactions-left">
-          <div class="reaction-icons">
-            <span class="reaction-emoji">❤️</span>
-            <span class="reaction-emoji">👍</span>
+        <div v-if="post.likes" class="reactions-left">
+          <div v-if="post.usedReactionEmojis?.length" class="reaction-icons">
+            <span
+              v-for="emoji in post.usedReactionEmojis"
+              :key="emoji"
+              class="reaction-emoji"
+            >{{ emoji }}</span>
           </div>
           <span class="reaction-count">{{ post.likes }}</span>
         </div>
@@ -322,17 +358,14 @@
 
       <!-- Action buttons -->
       <div class="post-actions" @click.stop>
-        <button class="action-btn">
-          <v-icon size="20">mdi-heart-outline</v-icon>
-          <span>Like</span>
-        </button>
+        <PostReactionButton :post="post" @reaction-changed="(next) => Object.assign(post, next)" />
         <button class="action-btn">
           <v-icon size="20">mdi-comment-processing-outline</v-icon>
           <span>Comment</span>
         </button>
-        <button class="action-btn" @click="sharePost(post)">
-          <v-icon size="20">mdi-share-variant-outline</v-icon>
-          <span>Share</span>
+        <button class="action-btn" @click="savePostSoon">
+          <v-icon size="20">mdi-bookmark-outline</v-icon>
+          <span>Save</span>
         </button>
       </div>
     </div>
@@ -351,6 +384,8 @@ import { useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
+import PostReactionButton from "@/components/PostReactionButton.vue";
+import { uniqueReactionEmojis } from "@/services/reactionTypes";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const theme = useTheme();
@@ -532,7 +567,12 @@ const mapPost = (item) => {
       ? `http://localhost:5001/temp/${item.images[0]}`
       : "",
     time: formatTime(item.createdAt),
-    likes: 0,
+    likes: item.reactionCount ?? 0,
+    myReactionTypeId: item.myReactionTypeId ?? null,
+    myReactionName: item.myReactionName || "",
+    myReactionIcon: item.myReactionIcon || "",
+    usedReactionTypeIds: item.usedReactionTypeIds || [],
+    usedReactionEmojis: uniqueReactionEmojis(item.usedReactionTypeIds),
     comments: 0,
   };
 };
@@ -605,25 +645,6 @@ const savePost = async () => {
   }
 };
 
-const sharePost = async (post) => {
-  const url = `${window.location.origin}/posts/${post.id}`;
-  try {
-    if (navigator.share) {
-      await navigator.share({ title: post.title || "BuzzUp post", url });
-      return;
-    }
-    await navigator.clipboard.writeText(url);
-    snackbarText.value = "Link copied.";
-    snackbarColor.value = "green";
-    showSnackbar.value = true;
-  } catch (e) {
-    if (e?.name === "AbortError") return;
-    snackbarText.value = "Could not copy link.";
-    snackbarColor.value = "red";
-    showSnackbar.value = true;
-  }
-};
-
 const savePostSoon = () => {
   snackbarText.value = "Saving posts comes next.";
   snackbarColor.value = "green";
@@ -634,6 +655,8 @@ const peekPostId = ref(null);
 const peekUser = ref(null);
 const peekSending = ref(false);
 const peekSentLocal = ref(false);
+const showUnfriendDialog = ref(false);
+const unfriending = ref(false);
 let peekRequestSeq = 0;
 const isPeekOwn = computed(() => peekUser.value?.id && peekUser.value.id === currentUserId.value);
 const peekStatus = computed(() => peekUser.value?.friendshipStatus || "None");
@@ -644,7 +667,7 @@ const peekIsFriends = computed(() => peekStatus.value === "Accepted");
 const peekCanAccept = computed(() => peekStatus.value === "PendingIncoming" && !peekSentLocal.value);
 const showPeekPrimaryAction = computed(() => !isPeekOwn.value);
 const peekPrimaryDisabled = computed(
-  () => peekSending.value || peekRequestSent.value || peekIsFriends.value
+  () => peekSending.value || peekRequestSent.value
 );
 const peekPrimaryLabel = computed(() => {
   if (peekIsFriends.value) return "Friends";
@@ -695,11 +718,40 @@ const openAuthorPeek = async (post) => {
 };
 
 const onPeekPrimaryAction = () => {
+  if (peekIsFriends.value) {
+    showUnfriendDialog.value = true;
+    return;
+  }
   if (peekCanAccept.value) {
     acceptPeekFriendRequest();
     return;
   }
   sendPeekFriendRequest();
+};
+
+const confirmPeekUnfriend = async () => {
+  if (!peekUser.value?.id || unfriending.value) return;
+  unfriending.value = true;
+  try {
+    const userId = peekUser.value.id;
+    await AxiosApi.post("/friendships/unfriend", { userId });
+    showUnfriendDialog.value = false;
+    peekSentLocal.value = false;
+    peekUser.value = { ...peekUser.value, friendshipStatus: "None" };
+    window.dispatchEvent(
+      new CustomEvent("buzzup-friends-changed", {
+        detail: { userId, status: "None" },
+      })
+    );
+    await loadFeed();
+    snackbarText.value = "You are no longer friends.";
+    snackbarColor.value = "green";
+    showSnackbar.value = true;
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    unfriending.value = false;
+  }
 };
 
 const sendPeekFriendRequest = async () => {
@@ -727,6 +779,29 @@ const acceptPeekFriendRequest = async () => {
     peekUser.value = { ...peekUser.value, friendshipStatus: "Accepted", friendCount: (peekUser.value.friendCount ?? 0) + 1 };
     snackbarText.value = "You are now friends.";
     window.dispatchEvent(new CustomEvent("buzzup-friends-changed"));
+    snackbarColor.value = "green";
+    showSnackbar.value = true;
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    peekSending.value = false;
+  }
+};
+
+const declinePeekFriendRequest = async () => {
+  if (!peekUser.value?.id || peekSending.value) return;
+  peekSending.value = true;
+  try {
+    const userId = peekUser.value.id;
+    await AxiosApi.post("/friendships/reject", { userId });
+    peekSentLocal.value = false;
+    peekUser.value = { ...peekUser.value, friendshipStatus: "None" };
+    window.dispatchEvent(
+      new CustomEvent("buzzup-friends-changed", {
+        detail: { userId, status: "None" },
+      })
+    );
+    snackbarText.value = "Friend request declined.";
     snackbarColor.value = "green";
     showSnackbar.value = true;
   } catch (e) {
@@ -1052,7 +1127,8 @@ const deletePost = async () => {
 }
 
 .reaction-emoji {
-  font-size: 0.85rem;
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .reaction-count {
@@ -1362,15 +1438,56 @@ const deletePost = async () => {
 }
 
 .author-peek-add,
+.author-peek-decline,
 .author-peek-view {
   flex: 1;
 }
 
 .author-peek-add {
-  background: #1a1a2e !important;
+  background: linear-gradient(135deg, #1a1a2e, #0f3460) !important;
   color: #fff !important;
   font-weight: 700;
   text-transform: none;
+  transition: background-color 0.25s ease !important;
+}
+
+.author-peek-add.is-friends:hover {
+  background: #f44336 !important;
+}
+
+.author-peek-decline {
+  text-transform: none !important;
+  font-weight: 700;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
+.friend-btn-swap {
+  display: grid;
+  align-items: center;
+  justify-items: center;
+}
+
+.friend-btn-main,
+.friend-btn-unfriend {
+  grid-area: 1 / 1;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  transition: opacity 0.22s ease;
+}
+
+.friend-btn-unfriend {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.author-peek-add.is-friends:hover .friend-btn-main {
+  opacity: 0;
+}
+
+.author-peek-add.is-friends:hover .friend-btn-unfriend {
+  opacity: 1;
 }
 
 .author-peek-view {

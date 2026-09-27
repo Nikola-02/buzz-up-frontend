@@ -36,21 +36,6 @@
               </v-tooltip>
             </span>
           </div>
-          <v-menu location="bottom end">
-            <template #activator="{ props }">
-              <button class="post-options-btn" v-bind="props">
-                <v-icon size="20">mdi-dots-horizontal</v-icon>
-              </button>
-            </template>
-            <v-list density="compact">
-              <v-list-item @click="savePostSoon">
-                <template #prepend>
-                  <v-icon size="18">mdi-bookmark-outline</v-icon>
-                </template>
-                <v-list-item-title>Save</v-list-item-title>
-              </v-list-item>
-            </v-list>
-          </v-menu>
         </div>
         <p class="post-title">{{ post.title }}</p>
         <p v-if="post.description" class="post-body">{{ post.description }}</p>
@@ -58,27 +43,27 @@
           <img :src="post.image" class="post-image" />
         </div>
         <div class="reactions-bar">
-          <div class="reactions-left">
-            <div class="reaction-icons">
-              <span class="reaction-emoji">❤️</span>
-              <span class="reaction-emoji">👍</span>
+          <div v-if="post.likes" class="reactions-left">
+            <div v-if="post.usedReactionEmojis?.length" class="reaction-icons">
+              <span
+                v-for="emoji in post.usedReactionEmojis"
+                :key="emoji"
+                class="reaction-emoji"
+              >{{ emoji }}</span>
             </div>
             <span class="reaction-count">{{ post.likes }}</span>
           </div>
           <span class="reactions-right">{{ post.comments }} comments</span>
         </div>
         <div class="post-actions">
-          <button class="action-btn">
-            <v-icon size="20">mdi-heart-outline</v-icon>
-            <span>Like</span>
-          </button>
+          <PostReactionButton :post="post" @reaction-changed="(next) => Object.assign(post, next)" />
           <button class="action-btn">
             <v-icon size="20">mdi-comment-processing-outline</v-icon>
             <span>Comment</span>
           </button>
-          <button class="action-btn" @click="sharePost">
-            <v-icon size="20">mdi-share-variant-outline</v-icon>
-            <span>Share</span>
+          <button class="action-btn" @click="savePostSoon">
+            <v-icon size="20">mdi-bookmark-outline</v-icon>
+            <span>Save</span>
           </button>
         </div>
       </div>
@@ -98,6 +83,8 @@ import { useRoute, useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
+import PostReactionButton from "@/components/PostReactionButton.vue";
+import { uniqueReactionEmojis } from "@/services/reactionTypes";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const theme = useTheme();
@@ -159,7 +146,12 @@ const mapPost = (item) => {
     feelingEmoji: feeling?.emoji || "",
     image: item.images?.[0] ? `http://localhost:5001/temp/${item.images[0]}` : "",
     time: formatTime(item.createdAt),
-    likes: 0,
+    likes: item.reactionCount ?? 0,
+    myReactionTypeId: item.myReactionTypeId ?? null,
+    myReactionName: item.myReactionName || "",
+    myReactionIcon: item.myReactionIcon || "",
+    usedReactionTypeIds: item.usedReactionTypeIds || [],
+    usedReactionEmojis: uniqueReactionEmojis(item.usedReactionTypeIds),
     comments: 0,
   };
 };
@@ -189,25 +181,6 @@ const goToAuthor = () => {
     return;
   }
   router.push(`/users/${id}`);
-};
-
-const sharePost = async () => {
-  const url = `${window.location.origin}/posts/${post.value.id}`;
-  try {
-    if (navigator.share) {
-      await navigator.share({ title: post.value.title || "BuzzUp post", url });
-      return;
-    }
-    await navigator.clipboard.writeText(url);
-    snackbarText.value = "Link copied.";
-    snackbarColor.value = "green";
-    showSnackbar.value = true;
-  } catch (e) {
-    if (e?.name === "AbortError") return;
-    snackbarText.value = "Could not copy link.";
-    snackbarColor.value = "red";
-    showSnackbar.value = true;
-  }
 };
 
 const savePostSoon = () => {
@@ -307,25 +280,6 @@ watch(postId, loadPost);
   cursor: pointer;
 }
 
-.post-options-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.post-options-btn:hover {
-  background: var(--hover-bg);
-  color: var(--text-primary);
-}
-
 .post-author {
   font-weight: 700;
   font-size: 0.92rem;
@@ -391,7 +345,8 @@ watch(postId, loadPost);
 }
 
 .reaction-emoji {
-  font-size: 0.85rem;
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .reaction-count {

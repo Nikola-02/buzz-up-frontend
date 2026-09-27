@@ -145,6 +145,30 @@
             ></v-text-field>
           </div>
 
+          <div class="input-group">
+            <label class="input-label">Profile visibility</label>
+            <div class="visibility-choices">
+              <button
+                type="button"
+                class="visibility-choice"
+                :class="{ active: !user.isPrivate }"
+                @click="user.isPrivate = false"
+              >
+                <v-icon size="18">mdi-earth</v-icon>
+                <span>Public</span>
+              </button>
+              <button
+                type="button"
+                class="visibility-choice"
+                :class="{ active: user.isPrivate }"
+                @click="user.isPrivate = true"
+              >
+                <v-icon size="18">mdi-lock-outline</v-icon>
+                <span>Private</span>
+              </button>
+            </div>
+          </div>
+
           <!-- Optional section -->
           <button
             type="button"
@@ -321,6 +345,7 @@ const user = ref({
   workplace: "",
   university: "",
   dateOfBirth: "",
+  isPrivate: false,
 });
 
 const onImageSelected = async (file) => {
@@ -368,6 +393,7 @@ const register = async () => {
     workplace: user.value.workplace || null,
     university: user.value.university || null,
     dateOfBirth: user.value.dateOfBirth || null,
+    isPrivate: !!user.value.isPrivate,
   };
 
   // Clear previous server errors
@@ -574,6 +600,33 @@ const redirectToLogin = () => {
 
 .optional-label {
   color: #94a3b8;
+}
+
+.visibility-choices {
+  display: flex;
+  gap: 10px;
+}
+
+.visibility-choice {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #334155;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.visibility-choice.active {
+  background: #1a1a2e;
+  border-color: #1a1a2e;
+  color: #fff;
 }
 
 .upload-success {
