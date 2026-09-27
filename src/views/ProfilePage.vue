@@ -199,7 +199,7 @@
             </div>
             <div class="post-actions" @click.stop>
               <PostReactionButton :post="post" @reaction-changed="(next) => Object.assign(post, next)" />
-              <button class="action-btn">
+              <button class="action-btn" @click="goToPost(post.id)">
                 <v-icon size="20">mdi-comment-processing-outline</v-icon>
                 <span>Comment</span>
               </button>
@@ -636,6 +636,7 @@ import { rules } from "@/plugins/validationMessages.js";
 import CountrySelect from "@/components/CountrySelect.vue";
 import PostReactionButton from "@/components/PostReactionButton.vue";
 import { uniqueReactionEmojis } from "@/services/reactionTypes";
+import { formatApiDate, formatRelativeTime } from "@/services/dates";
 import { countryDisplayName, normalizeCountryId } from "@/services/countries";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
@@ -672,25 +673,6 @@ const feelingTypes = [
   { id: 6, name: "Loved", emoji: "😍" },
 ];
 
-const parseApiDate = (value) => {
-  const raw = String(value);
-  if (/[zZ]|[+-]\d{2}:\d{2}$/.test(raw)) return new Date(raw);
-  return new Date(`${raw}Z`);
-};
-
-const formatTime = (value) => {
-  if (!value) return "";
-  const date = parseApiDate(value);
-  const diffMs = Date.now() - date.getTime();
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "Yesterday";
-  return date.toLocaleDateString();
-};
 
 const visibilityMeta = (name, id) => {
   const n = name || (id === 2 ? "Friends" : id === 3 ? "Only me" : "Public");
@@ -715,14 +697,14 @@ const mapPost = (item) => {
     feelingName: item.feelingName,
     feelingEmoji: feeling?.emoji || "",
     image: item.images?.[0] ? `http://localhost:5001/temp/${item.images[0]}` : "",
-    time: formatTime(item.createdAt),
+    time: formatRelativeTime(item.createdAt),
     likes: item.reactionCount ?? 0,
     myReactionTypeId: item.myReactionTypeId ?? null,
     myReactionName: item.myReactionName || "",
     myReactionIcon: item.myReactionIcon || "",
     usedReactionTypeIds: item.usedReactionTypeIds || [],
     usedReactionEmojis: uniqueReactionEmojis(item.usedReactionTypeIds),
-    comments: 0,
+    comments: item.commentCount ?? 0,
   };
 };
 
@@ -761,10 +743,7 @@ watch(showFriendsDialog, (open) => {
   if (!open) friendSearchQuery.value = "";
 });
 
-const formatFriendsSince = (dateStr) => {
-  const d = new Date(dateStr);
-  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}.`;
-};
+const formatFriendsSince = (dateStr) => formatApiDate(dateStr);
 
 const mapFriend = (item) => ({
   id: item.id,

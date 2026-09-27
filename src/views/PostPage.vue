@@ -57,7 +57,7 @@
         </div>
         <div class="post-actions">
           <PostReactionButton :post="post" @reaction-changed="(next) => Object.assign(post, next)" />
-          <button class="action-btn">
+          <button class="action-btn" @click="scrollToComments">
             <v-icon size="20">mdi-comment-processing-outline</v-icon>
             <span>Comment</span>
           </button>
@@ -66,8 +66,68 @@
             <span>Save</span>
           </button>
         </div>
+        <div id="comments" class="comments-section">
+          <div v-if="commentsLoading" class="comments-empty">Loading comments...</div>
+          <div v-else-if="!comments.length" class="comments-empty">No comments yet.</div>
+          <div v-if="comments.length" class="comment-list">
+            <CommentThread
+              v-for="comment in comments"
+              :key="comment.id"
+              :comment="comment"
+              :my-avatar="myAvatar"
+              :posting="postingComment"
+              :current-user-id="currentUserId"
+              :post-author-id="post.userId"
+              @author-click="goToCommentAuthor"
+              @reply="submitReply"
+              @edit="submitEdit"
+              @ask-delete="askDeleteComment"
+            />
+          </div>
+          <form class="comment-composer" @submit.prevent="submitComment">
+            <v-avatar size="32">
+              <img :src="myAvatar" alt="Me" />
+            </v-avatar>
+            <input
+              ref="commentInput"
+              v-model="newComment"
+              class="comment-input"
+              type="text"
+              maxlength="2000"
+              placeholder="Write a comment..."
+              :disabled="postingComment"
+            />
+            <button class="comment-send" type="submit" :disabled="!newComment.trim() || postingComment">
+              Post
+            </button>
+          </form>
+        </div>
       </div>
     </div>
+
+    <v-dialog v-model="showDeleteCommentDialog" max-width="400">
+      <v-card class="create-dialog" :class="{ 'dark-mode': isDark }">
+        <div class="create-dialog-header">
+          <h2 class="create-dialog-title">Delete comment</h2>
+          <v-btn icon variant="text" size="small" :disabled="postingComment" @click="showDeleteCommentDialog = false">
+            <v-icon>mdi-close</v-icon>
+          </v-btn>
+        </div>
+        <div class="create-dialog-body">
+          <p class="delete-confirm-text">Are you sure you want to delete this comment? Replies will be deleted too.</p>
+          <v-btn
+            block
+            color="#f44336"
+            rounded="lg"
+            class="create-submit"
+            :loading="postingComment"
+            @click="confirmDeleteComment"
+          >
+            Delete
+          </v-btn>
+        </div>
+      </v-card>
+    </v-dialog>
 
     <SnackbarComponent
       v-model:show="showSnackbar"
@@ -78,13 +138,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
 import PostReactionButton from "@/components/PostReactionButton.vue";
+import CommentThread from "@/components/CommentThread.vue";
 import { uniqueReactionEmojis } from "@/services/reactionTypes";
+import { formatTime } from "@/services/dates";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const theme = useTheme();
@@ -108,20 +170,6 @@ const visibilityMeta = (name, id) => {
   if (n === "Friends") return { icon: "mdi-account-multiple-outline", label: "Friends" };
   if (n === "Only me") return { icon: "mdi-lock-outline", label: "Only me" };
   return { icon: "mdi-earth", label: "Public" };
-};
-
-const formatTime = (dateStr) => {
-  if (!dateStr) return "";
-  const date = new Date(dateStr);
-  const now = new Date();
-  const minutes = Math.floor((now - date) / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return "Yesterday";
-  return date.toLocaleDateString();
 };
 
 const postId = computed(() => Number(route.params.id));
@@ -152,8 +200,45 @@ const mapPost = (item) => {
     myReactionIcon: item.myReactionIcon || "",
     usedReactionTypeIds: item.usedReactionTypeIds || [],
     usedReactionEmojis: uniqueReactionEmojis(item.usedReactionTypeIds),
-    comments: 0,
+    comments: item.commentCount ?? 0,
   };
+};
+
+const comments = ref([]);
+const commentsLoading = ref(false);
+const showDeleteCommentDialog = ref(false);
+const commentToDelete = ref(null);
+const newComment = ref("");
+const postingComment = ref(false);
+const commentInput = ref(null);
+const myAvatar = computed(
+  () => `http://localhost:5001/temp/${store.getters.getProfile?.image || store.getters.getUser?.image || "default.png"}`
+);
+
+const mapComment = (item) => ({
+  id: item.id,
+  userId: item.userId,
+  authorName: `${item.firstName || ""} ${item.lastName || ""}`.trim() || item.username,
+  authorAvatar: `http://localhost:5001/temp/${item.image || "default.png"}`,
+  content: item.content,
+  time: formatTime(item.createdAt),
+  replies: (item.replies || []).map(mapComment),
+});
+
+const countComments = (list) =>
+  (list || []).reduce((total, comment) => total + 1 + countComments(comment.replies), 0);
+
+const loadComments = async () => {
+  if (!postId.value) return;
+  commentsLoading.value = true;
+  try {
+    const res = await AxiosApi.get(`/posts/${postId.value}/comments`);
+    comments.value = (Array.isArray(res.data) ? res.data : []).map(mapComment);
+  } catch (e) {
+    comments.value = [];
+  } finally {
+    commentsLoading.value = false;
+  }
 };
 
 const loadPost = async () => {
@@ -163,9 +248,11 @@ const loadPost = async () => {
   }
   loading.value = true;
   post.value = null;
+  comments.value = [];
   try {
     const res = await AxiosApi.get(`/posts/${postId.value}`);
     post.value = mapPost(res.data);
+    await loadComments();
   } catch (e) {
     router.replace("/");
     return;
@@ -174,13 +261,91 @@ const loadPost = async () => {
   }
 };
 
-const goToAuthor = () => {
-  const id = post.value?.userId;
-  if (!id || id === currentUserId.value) {
+const goToUser = (userId) => {
+  if (!userId || userId === currentUserId.value) {
     router.push("/profile");
     return;
   }
-  router.push(`/users/${id}`);
+  router.push(`/users/${userId}`);
+};
+
+const goToAuthor = () => {
+  goToUser(post.value?.userId);
+};
+
+const goToCommentAuthor = (comment) => {
+  goToUser(comment.userId);
+};
+
+const scrollToComments = async () => {
+  document.getElementById("comments")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  await nextTick();
+  commentInput.value?.focus();
+};
+
+const submitReply = async ({ parentId, content }) => {
+  if (!post.value?.id || !content || postingComment.value) return;
+  postingComment.value = true;
+  try {
+    await AxiosApi.post(`/posts/${post.value.id}/comments`, { content, parentId });
+    await loadComments();
+    if (post.value) post.value.comments = countComments(comments.value);
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    postingComment.value = false;
+  }
+};
+
+const submitEdit = async ({ commentId, content }) => {
+  if (!commentId || !content || postingComment.value) return;
+  postingComment.value = true;
+  try {
+    await AxiosApi.put(`/comments/${commentId}`, { content });
+    await loadComments();
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    postingComment.value = false;
+  }
+};
+
+const askDeleteComment = (comment) => {
+  commentToDelete.value = comment;
+  showDeleteCommentDialog.value = true;
+};
+
+const confirmDeleteComment = async () => {
+  const commentId = commentToDelete.value?.id;
+  if (!commentId || postingComment.value) return;
+  postingComment.value = true;
+  try {
+    await AxiosApi.delete(`/comments/${commentId}`);
+    showDeleteCommentDialog.value = false;
+    commentToDelete.value = null;
+    await loadComments();
+    if (post.value) post.value.comments = countComments(comments.value);
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    postingComment.value = false;
+  }
+};
+
+const submitComment = async () => {
+  const content = newComment.value.trim();
+  if (!post.value?.id || !content || postingComment.value) return;
+  postingComment.value = true;
+  try {
+    await AxiosApi.post(`/posts/${post.value.id}/comments`, { content });
+    newComment.value = "";
+    await loadComments();
+    if (post.value) post.value.comments = countComments(comments.value);
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    postingComment.value = false;
+  }
 };
 
 const savePostSoon = () => {
@@ -387,5 +552,168 @@ watch(postId, loadPost);
 .action-btn:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
+}
+
+.comments-section {
+  border-top: 1px solid var(--divider);
+  margin: 0 8px;
+  padding: 12px 12px 16px;
+}
+
+.comments-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding: 4px 4px 8px;
+}
+
+.comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comment-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.comment-avatar-hit {
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.comment-body {
+  min-width: 0;
+}
+
+.comment-bubble {
+  background: var(--hover-bg);
+  border-radius: 14px;
+  padding: 8px 12px;
+}
+
+.comment-author {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.comment-text {
+  margin: 2px 0 0;
+  font-size: 0.88rem;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.comment-time {
+  display: block;
+  margin-top: 4px;
+  padding-left: 12px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.comment-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.comment-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 18px;
+  background: var(--hover-bg);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  outline: none;
+}
+
+.comment-input::placeholder {
+  color: var(--text-muted);
+}
+
+.comment-send {
+  border: none;
+  border-radius: 18px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #1a1a2e, #0f3460);
+  cursor: pointer;
+}
+
+.comment-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+</style>
+
+<style>
+.create-dialog {
+  --card-bg: #fff;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --hover-bg: #f1f5f9;
+  --divider: #e2e8f0;
+  border-radius: 16px !important;
+  overflow: hidden;
+  background: var(--card-bg) !important;
+}
+
+.create-dialog.dark-mode {
+  --card-bg: #1e1e2e;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --hover-bg: #2a2a3e;
+  --divider: #334155;
+}
+
+.create-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--divider);
+}
+
+.create-dialog-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.create-dialog-header .v-btn {
+  color: var(--text-muted) !important;
+}
+
+.create-dialog-body {
+  padding: 18px 20px 20px;
+}
+
+.delete-confirm-text {
+  margin: 0 0 16px;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.create-submit {
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-weight: 700 !important;
 }
 </style>

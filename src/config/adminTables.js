@@ -1,4 +1,5 @@
 import { rules } from "@/plugins/validationMessages.js";
+import { formatApiDateTime } from "@/services/dates";
 
 /**
  * Admin CRUD table configuration.
@@ -46,7 +47,7 @@ export const adminTables = {
       {
         key: "createdAt",
         label: "Created At",
-        format: (v) => (v ? new Date(v).toLocaleString() : ""),
+        format: (v) => formatApiDateTime(v),
       },
       {
         key: "isActive",
@@ -119,7 +120,7 @@ export const adminTables = {
       {
         key: "createdAt",
         label: "Created At",
-        format: (v) => (v ? new Date(v).toLocaleString() : ""),
+        format: (v) => formatApiDateTime(v),
       },
     ],
     searchKeys: ["name", "isActive", "createdAt"],
