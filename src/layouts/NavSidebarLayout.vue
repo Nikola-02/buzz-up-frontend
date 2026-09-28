@@ -130,11 +130,64 @@
           </v-card>
         </v-menu>
 
-        <v-btn icon variant="text" class="nav-action-btn">
-          <v-badge color="#ff6b6b" content="3">
-            <v-icon>mdi-message-outline</v-icon>
-          </v-badge>
-        </v-btn>
+        <v-menu
+          v-model="showChats"
+          offset-y
+          transition="slide-y-transition"
+          :close-on-content-click="false"
+        >
+          <template v-slot:activator="{ props }">
+            <v-btn icon variant="text" class="nav-action-btn" v-bind="props">
+              <v-badge
+                v-if="unreadChats > 0"
+                color="#ff6b6b"
+                :content="unreadChats"
+                :offset-x="-2"
+                :offset-y="-2"
+              >
+                <v-icon>mdi-message-outline</v-icon>
+              </v-badge>
+              <v-icon v-else>mdi-message-outline</v-icon>
+            </v-btn>
+          </template>
+
+          <v-card class="notifications-dropdown" min-width="340" max-width="380">
+            <div class="notif-header">
+              <span class="notif-title">Chats</span>
+            </div>
+            <v-divider></v-divider>
+            <v-list density="compact" class="notif-list" v-if="chats.length">
+              <v-list-item
+                v-for="chat in chats"
+                :key="chat.id"
+                class="notif-item"
+                :class="{ 'notif-unread': chat.hasUnread }"
+                @click="openInboxChat(chat)"
+              >
+                <template v-slot:prepend>
+                  <v-avatar size="40">
+                    <img :src="chat.avatar" :alt="chat.name" />
+                  </v-avatar>
+                </template>
+                <div class="notif-content">
+                  <span class="notif-text">
+                    <strong>{{ chat.name }}</strong>
+                  </span>
+                </div>
+                <template v-slot:append>
+                  <span v-if="chat.hasUnread" class="notif-unread-dot"></span>
+                </template>
+              </v-list-item>
+            </v-list>
+            <div v-else-if="chatsLoading" class="notif-empty">
+              <span>Loading...</span>
+            </div>
+            <div v-else class="notif-empty">
+              <v-icon size="36" color="#bec3c9">mdi-message-outline</v-icon>
+              <span>No chats yet</span>
+            </div>
+          </v-card>
+        </v-menu>
 
         <v-divider vertical class="mx-2 nav-divider"></v-divider>
 
@@ -340,7 +393,13 @@
             <div class="friend-info">
               <span class="friend-name">{{ friend.name }}</span>
             </div>
-            <v-btn icon variant="text" size="small" class="friend-msg-btn" @click.stop>
+            <v-btn
+              icon
+              variant="text"
+              size="small"
+              class="friend-msg-btn"
+              @click.stop="openFriendChat(friend.id)"
+            >
               <v-icon size="18">mdi-message-text-outline</v-icon>
             </v-btn>
           </div>
@@ -369,7 +428,13 @@
             <div class="friend-info">
               <span class="friend-name">{{ friend.name }}</span>
             </div>
-            <v-btn icon variant="text" size="small" class="friend-msg-btn" @click.stop>
+            <v-btn
+              icon
+              variant="text"
+              size="small"
+              class="friend-msg-btn"
+              @click.stop="openFriendChat(friend.id)"
+            >
               <v-icon size="18">mdi-message-text-outline</v-icon>
             </v-btn>
           </div>
@@ -460,6 +525,8 @@
       </div>
     </v-card>
   </v-dialog>
+
+  <ChatPanel />
 </template>
 
 <script setup>
@@ -468,7 +535,9 @@ import { useRouter } from "vue-router";
 import { useStore } from "vuex";
 import { useTheme } from "vuetify";
 import AxiosApi from "@/plugins/axios";
+import ChatPanel from "@/components/ChatPanel.vue";
 import { formatNotifTime } from "@/services/dates";
+import { openChatWithUser, closeChatPanel } from "@/services/chatPanel";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const router = useRouter();
@@ -664,6 +733,46 @@ watch(showNotifications, (open) => {
   if (open) loadNotifications();
 });
 
+const showChats = ref(false);
+const chats = ref([]);
+const chatsLoading = ref(false);
+
+const mapInboxChat = (item) => {
+  const otherUser = item.otherUser || item.OtherUser || {};
+  return {
+    id: item.id,
+    otherUserId: otherUser.id,
+    name: `${otherUser.firstName || ""} ${otherUser.lastName || ""}`.trim() || otherUser.username || "",
+    avatar: `http://localhost:5001/temp/${otherUser.image || "default.png"}`,
+    hasUnread: !!(item.hasUnread ?? item.HasUnread),
+  };
+};
+
+const loadChats = async () => {
+  chatsLoading.value = chats.value.length === 0;
+  try {
+    const res = await AxiosApi.get("/chats");
+    const list = Array.isArray(res.data) ? res.data : res.data.data || res.data.Data || [];
+    chats.value = list.map(mapInboxChat);
+  } catch (e) {
+    chats.value = [];
+  } finally {
+    chatsLoading.value = false;
+  }
+};
+
+const unreadChats = computed(() => chats.value.filter((chat) => chat.hasUnread).length);
+
+const openInboxChat = (chat) => {
+  if (!chat.otherUserId) return;
+  showChats.value = false;
+  openChatWithUser(chat.otherUserId);
+};
+
+watch(showChats, (open) => {
+  if (open) loadChats();
+});
+
 // Activity status
 const myStatus = ref("active");
 const activityStatuses = [
@@ -778,19 +887,33 @@ const onFriendsChanged = () => {
   loadFriends();
   loadIncoming();
   loadNotifications();
+  loadChats();
 };
+
+const onChatsChanged = () => {
+  loadChats();
+};
+
 onMounted(() => {
   loadFriends();
   loadIncoming();
   loadNotifications();
+  loadChats();
   window.addEventListener("buzzup-friends-changed", onFriendsChanged);
+  window.addEventListener("buzzup-chats-changed", onChatsChanged);
   document.addEventListener("click", onDocClick);
 });
 onUnmounted(() => {
   window.removeEventListener("buzzup-friends-changed", onFriendsChanged);
+  window.removeEventListener("buzzup-chats-changed", onChatsChanged);
   document.removeEventListener("click", onDocClick);
   clearTimeout(navSearchTimer);
+  closeChatPanel();
 });
+
+const openFriendChat = (friendUserId) => {
+  openChatWithUser(friendUserId);
+};
 
 const filteredOnlineFriends = computed(() => {
   const q = friendSearchQuery.value.toLowerCase();
@@ -817,6 +940,7 @@ const filteredOfflineFriends = computed(() => {
 // ]);
 
 const logout = () => {
+  closeChatPanel();
   store.dispatch("logout");
   router.push("/login");
 };

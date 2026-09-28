@@ -41,6 +41,15 @@
               </span>
             </v-btn>
             <v-btn
+              v-if="isFriends"
+              class="message-friend-btn"
+              rounded
+              @click="openDirectChat"
+            >
+              <v-icon size="18" class="mr-1">mdi-message-outline</v-icon>
+              Message
+            </v-btn>
+            <v-btn
               v-if="canAccept"
               class="decline-friend-btn"
               variant="tonal"
@@ -253,6 +262,7 @@ import PostReactionButton from "@/components/PostReactionButton.vue";
 import { uniqueReactionEmojis } from "@/services/reactionTypes";
 import { formatTime } from "@/services/dates";
 import { countryDisplayName } from "@/services/countries";
+import { openChatWithUser } from "@/services/chatPanel";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const theme = useTheme();
@@ -376,6 +386,12 @@ const goToFriend = (id) => {
 const goToPost = (id) => {
   if (!id) return;
   router.push(`/posts/${id}`);
+};
+
+const openDirectChat = () => {
+  const otherUserId = profile.value?.id;
+  if (!otherUserId) return;
+  openChatWithUser(otherUserId);
 };
 
 const mapPost = (item) => {
@@ -715,7 +731,8 @@ watch(profileId, loadProfile);
   color: var(--text-primary);
 }
 
-.add-friend-btn {
+.add-friend-btn,
+.message-friend-btn {
   background: linear-gradient(135deg, #1a1a2e, #0f3460) !important;
   color: #fff !important;
   font-weight: 700;
