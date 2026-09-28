@@ -265,9 +265,9 @@
   </nav>
 
   <!-- MAIN CONTENT -->
-  <div class="main-wrapper" :class="{ 'dark-mode': isDarkTheme }">
+  <div class="main-wrapper" :class="{ 'dark-mode': isDarkTheme, 'hide-friends': !showFriendsSidebar }">
     <!-- FRIENDS SIDEBAR -->
-    <aside class="friends-sidebar">
+    <aside v-if="showFriendsSidebar" class="friends-sidebar">
       <div class="sidebar-header">
         <div class="sidebar-title-row">
           <span class="sidebar-title">Friends</span>
@@ -310,45 +310,6 @@
           >
             <v-icon size="20">mdi-magnify</v-icon>
           </v-btn>
-          <!-- Activity status menu -->
-          <v-menu offset-y>
-            <template v-slot:activator="{ props }">
-              <v-btn
-                icon
-                variant="text"
-                size="small"
-                class="sidebar-action-btn"
-                v-bind="props"
-              >
-                <v-icon size="20">mdi-dots-vertical</v-icon>
-              </v-btn>
-            </template>
-            <v-card class="activity-dropdown" min-width="200">
-              <v-list density="compact">
-                <v-list-subheader>My Status</v-list-subheader>
-                <v-list-item
-                  v-for="status in activityStatuses"
-                  :key="status.value"
-                  @click="myStatus = status.value"
-                  :class="{ 'active-status': myStatus === status.value }"
-                  class="status-option"
-                >
-                  <template v-slot:prepend>
-                    <span class="status-indicator" :class="status.value"></span>
-                  </template>
-                  <v-list-item-title>{{ status.label }}</v-list-item-title>
-                  <template v-slot:append>
-                    <v-icon
-                      v-if="myStatus === status.value"
-                      size="18"
-                      color="#31a24c"
-                      >mdi-check</v-icon
-                    >
-                  </template>
-                </v-list-item>
-              </v-list>
-            </v-card>
-          </v-menu>
         </div>
       </div>
 
@@ -531,18 +492,21 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 import { useStore } from "vuex";
 import { useTheme } from "vuetify";
 import AxiosApi from "@/plugins/axios";
 import ChatPanel from "@/components/ChatPanel.vue";
 import { formatNotifTime } from "@/services/dates";
 import { openChatWithUser, closeChatPanel } from "@/services/chatPanel";
+import { startChatHubConnection, stopChatHubConnection } from "@/services/chatHub";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const router = useRouter();
+const route = useRoute();
 const store = useStore();
 const theme = useTheme();
+const showFriendsSidebar = computed(() => route.path !== "/settings");
 
 const userAvatarUrl = computed(() => {
   const image = store.getters.userImage;
@@ -662,17 +626,34 @@ const notificationAction = (item) => {
   return "sent you a notification.";
 };
 
-const mapNotification = (item) => ({
-  id: item.id,
-  actorId: item.actorId,
-  postId: item.postId,
-  type: item.type,
-  name: `${item.actorFirstName || ""} ${item.actorLastName || ""}`.trim() || item.actorUsername,
-  avatar: `http://localhost:5001/temp/${item.actorImage || "default.png"}`,
-  action: notificationAction(item),
-  time: formatNotifTime(item.createdAt),
-  read: !!item.isRead,
-});
+const mapNotification = (item) => {
+  const type = item.type ?? item.Type;
+  const reactionTypeName = item.reactionTypeName ?? item.ReactionTypeName;
+  return {
+    id: item.id ?? item.Id,
+    actorId: item.actorId ?? item.ActorId,
+    postId: item.postId ?? item.PostId,
+    type,
+    reactionTypeName,
+    name: `${item.actorFirstName ?? item.ActorFirstName ?? ""} ${item.actorLastName ?? item.ActorLastName ?? ""}`.trim()
+      || item.actorUsername
+      || item.ActorUsername,
+      avatar: `http://localhost:5001/temp/${item.actorImage ?? item.ActorImage ?? "default.png"}`,
+    action: notificationAction({ type, reactionTypeName }),
+    time: formatNotifTime(item.createdAt ?? item.CreatedAt),
+    read: !!(item.isRead ?? item.IsRead),
+  };
+};
+
+const onLiveNotification = (event) => {
+  const mapped = mapNotification(event.detail || {});
+  if (!mapped.id) return;
+  notifications.value = [mapped, ...notifications.value.filter((existing) => existing.id !== mapped.id)];
+  if (mapped.type === "FriendRequest" || mapped.type === "FriendAccepted") {
+    loadIncoming();
+    loadFriends();
+  }
+};
 
 const loadNotifications = async () => {
   notificationsLoading.value = notifications.value.length === 0;
@@ -772,14 +753,6 @@ const openInboxChat = (chat) => {
 watch(showChats, (open) => {
   if (open) loadChats();
 });
-
-// Activity status
-const myStatus = ref("active");
-const activityStatuses = [
-  { value: "active", label: "Active" },
-  { value: "away", label: "Away" },
-  { value: "inactive", label: "Inactive" },
-];
 
 // Friends search
 const showFriendSearch = ref(false);
@@ -894,21 +867,39 @@ const onChatsChanged = () => {
   loadChats();
 };
 
+const onPresenceChanged = (event) => {
+  const presence = event.detail || {};
+  const presenceUserId = Number(presence.userId ?? presence.UserId);
+  if (!presenceUserId) return;
+  const isOnline = !!(presence.isOnline ?? presence.IsOnline);
+  friends.value = friends.value.map((existingFriend) =>
+    Number(existingFriend.id) === presenceUserId
+      ? { ...existingFriend, isOnline }
+      : existingFriend
+  );
+};
+
 onMounted(() => {
   loadFriends();
   loadIncoming();
   loadNotifications();
   loadChats();
+  startChatHubConnection();
   window.addEventListener("buzzup-friends-changed", onFriendsChanged);
   window.addEventListener("buzzup-chats-changed", onChatsChanged);
+  window.addEventListener("buzzup-presence-changed", onPresenceChanged);
+  window.addEventListener("buzzup-notification", onLiveNotification);
   document.addEventListener("click", onDocClick);
 });
 onUnmounted(() => {
   window.removeEventListener("buzzup-friends-changed", onFriendsChanged);
   window.removeEventListener("buzzup-chats-changed", onChatsChanged);
+  window.removeEventListener("buzzup-presence-changed", onPresenceChanged);
+  window.removeEventListener("buzzup-notification", onLiveNotification);
   document.removeEventListener("click", onDocClick);
   clearTimeout(navSearchTimer);
   closeChatPanel();
+  stopChatHubConnection();
 });
 
 const openFriendChat = (friendUserId) => {
@@ -941,6 +932,7 @@ const filteredOfflineFriends = computed(() => {
 
 const logout = () => {
   closeChatPanel();
+  stopChatHubConnection();
   store.dispatch("logout");
   router.push("/login");
 };
@@ -1203,6 +1195,9 @@ const logout = () => {
 /* ===== MAIN LAYOUT ===== */
 .main-wrapper {
   display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 150px;
   min-height: calc(100vh - 64px);
   background: var(--bg-main);
   transition: background 0.3s ease;
@@ -1210,12 +1205,12 @@ const logout = () => {
 
 /* ===== FRIENDS SIDEBAR ===== */
 .friends-sidebar {
-  width: 280px;
-  min-width: 280px;
-  max-width: 280px;
+  width: 236px;
+  min-width: 236px;
+  max-width: 236px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
-  padding: 20px 14px;
+  padding: 16px 10px;
   position: sticky;
   top: 64px;
   height: calc(100vh - 64px);
@@ -1314,42 +1309,6 @@ const logout = () => {
   padding: 32px 0;
   color: #bec3c9;
   font-size: 0.85rem;
-}
-
-/* ===== ACTIVITY STATUS DROPDOWN ===== */
-.activity-dropdown {
-  border-radius: 12px !important;
-  overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
-}
-
-.status-option {
-  border-radius: 8px !important;
-  margin: 0 6px 2px;
-}
-
-.active-status {
-  background: rgba(49, 162, 76, 0.1) !important;
-}
-
-.status-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-  margin-right: 4px;
-}
-
-.status-indicator.active {
-  background: #31a24c;
-}
-
-.status-indicator.away {
-  background: #ffc107;
-}
-
-.status-indicator.inactive {
-  background: #bec3c9;
 }
 
 /* ===== SECTION LABELS ===== */
@@ -1470,11 +1429,20 @@ const logout = () => {
 
 /* ===== CONTENT AREA ===== */
 .content-area {
-  flex: 1;
-  padding: 24px 32px;
-  min-height: calc(100vh - 64px);
+  flex: 1 1 640px;
+  width: 100%;
   max-width: 900px;
-  margin: 0 auto;
+  min-width: 0;
+  padding: 24px 20px;
+  min-height: calc(100vh - 64px);
+}
+
+.main-wrapper.hide-friends {
+  gap: 0;
+}
+
+.main-wrapper.hide-friends .content-area {
+  padding: 24px 32px;
 }
 
 /* ===== NOTIFICATIONS DROPDOWN ===== */
@@ -1683,9 +1651,9 @@ const logout = () => {
 /* ===== RESPONSIVE ===== */
 @media (max-width: 960px) {
   .friends-sidebar {
-    width: 240px;
-    min-width: 240px;
-    max-width: 240px;
+    width: 210px;
+    min-width: 210px;
+    max-width: 210px;
   }
 
   .content-area {

@@ -217,7 +217,7 @@
       </v-card>
     </v-dialog>
 
-    <div v-if="feedLoading" class="feed-empty">Loading posts...</div>
+    <div v-if="feedLoading && !posts.length" class="feed-empty">Loading posts...</div>
     <div v-else-if="!posts.length" class="feed-empty">No posts yet. Create the first one.</div>
 
     <!-- Posts feed -->
@@ -363,12 +363,15 @@
           <v-icon size="20">mdi-comment-processing-outline</v-icon>
           <span>Comment</span>
         </button>
-        <button class="action-btn" @click="savePostSoon">
-          <v-icon size="20">mdi-bookmark-outline</v-icon>
-          <span>Save</span>
-        </button>
       </div>
     </div>
+
+    <AppPagination
+      :page="feedPage"
+      :per-page="feedPerPage"
+      :total-count="feedTotalCount"
+      @update:page="setFeedPage"
+    />
   </div>
 
   <SnackbarComponent
@@ -385,7 +388,8 @@ import { useTheme } from "vuetify";
 import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
 import PostReactionButton from "@/components/PostReactionButton.vue";
-import { uniqueReactionEmojis } from "@/services/reactionTypes";
+import AppPagination from "@/components/AppPagination.vue";
+import { loadReactionTypes, uniqueReactionEmojis } from "@/services/reactionTypes";
 import { formatRelativeTime } from "@/services/dates";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
@@ -397,6 +401,9 @@ const posting = ref(false);
 const deleting = ref(false);
 const feedLoading = ref(false);
 const posts = ref([]);
+const feedPage = ref(1);
+const feedPerPage = 10;
+const feedTotalCount = ref(0);
 const showCreateDialog = ref(false);
 const showDeleteDialog = ref(false);
 const editingPostId = ref(null);
@@ -543,7 +550,7 @@ const mapPost = (item) => {
     description: item.description,
     location: item.location,
     feelingName: item.feelingName,
-    feelingEmoji: feeling?.emoji || "",
+    feelingEmoji: feeling?.emoji || (item.feelingIcon?.startsWith?.("mdi-") ? "" : item.feelingIcon) || "",
     image: item.images?.[0]
       ? `http://localhost:5001/temp/${item.images[0]}`
       : "",
@@ -558,16 +565,44 @@ const mapPost = (item) => {
   };
 };
 
-const loadFeed = async () => {
+const loadFeed = async ({ scrollToTop } = {}) => {
   feedLoading.value = true;
   try {
-    const res = await AxiosApi.get("/posts", { params: { perPage: 20, page: 1 } });
-    posts.value = (res.data.data || res.data.Data || []).map(mapPost);
+    const [, res] = await Promise.all([
+      loadReactionTypes(),
+      AxiosApi.get("/posts", {
+        params: { perPage: feedPerPage, page: feedPage.value },
+      }),
+    ]);
+    const payload = res.data || {};
+    const rows = payload.data || payload.Data || [];
+    const total = Number(payload.totalCount ?? payload.TotalCount ?? 0);
+    const current = Number(payload.currentPage ?? payload.CurrentPage ?? feedPage.value) || 1;
+    feedTotalCount.value = total;
+    feedPage.value = current;
+    const lastPage = Math.max(1, Math.ceil(total / feedPerPage) || 1);
+    if (!rows.length && current > 1) {
+      feedPage.value = Math.min(current - 1, lastPage);
+      await loadFeed({ scrollToTop });
+      return;
+    }
+    posts.value = rows.map(mapPost);
   } catch (e) {
     posts.value = [];
+    feedTotalCount.value = 0;
   } finally {
     feedLoading.value = false;
+    if (scrollToTop) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
+};
+
+const setFeedPage = (nextPage) => {
+  const normalized = Number(nextPage) || 1;
+  if (normalized === feedPage.value) return;
+  feedPage.value = normalized;
+  loadFeed({ scrollToTop: true });
 };
 
 onMounted(async () => {
@@ -610,6 +645,7 @@ const savePost = async () => {
         image: uploadedFileName.value || null,
       });
       snackbarText.value = "Post created.";
+      feedPage.value = 1;
     }
 
     newPost.value = emptyPost();
@@ -624,12 +660,6 @@ const savePost = async () => {
   } finally {
     posting.value = false;
   }
-};
-
-const savePostSoon = () => {
-  snackbarText.value = "Saving posts comes next.";
-  snackbarColor.value = "green";
-  showSnackbar.value = true;
 };
 
 const peekPostId = ref(null);
@@ -860,7 +890,7 @@ const deletePost = async () => {
   --divider: #e2e8f0;
   --action-hover: rgba(15, 52, 96, 0.08);
   max-width: 640px;
-  margin: 0 auto;
+  margin: 0;
   padding-bottom: 40px;
 }
 

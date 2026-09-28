@@ -61,10 +61,6 @@
             <v-icon size="20">mdi-comment-processing-outline</v-icon>
             <span>Comment</span>
           </button>
-          <button class="action-btn" @click="savePostSoon">
-            <v-icon size="20">mdi-bookmark-outline</v-icon>
-            <span>Save</span>
-          </button>
         </div>
         <div id="comments" class="comments-section">
           <div v-if="commentsLoading" class="comments-empty">Loading comments...</div>
@@ -145,7 +141,7 @@ import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
 import PostReactionButton from "@/components/PostReactionButton.vue";
 import CommentThread from "@/components/CommentThread.vue";
-import { uniqueReactionEmojis } from "@/services/reactionTypes";
+import { loadReactionTypes, uniqueReactionEmojis } from "@/services/reactionTypes";
 import { formatTime } from "@/services/dates";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
@@ -191,7 +187,7 @@ const mapPost = (item) => {
     description: item.description,
     location: item.location,
     feelingName: item.feelingName,
-    feelingEmoji: feeling?.emoji || "",
+    feelingEmoji: feeling?.emoji || (item.feelingIcon?.startsWith?.("mdi-") ? "" : item.feelingIcon) || "",
     image: item.images?.[0] ? `http://localhost:5001/temp/${item.images[0]}` : "",
     time: formatTime(item.createdAt),
     likes: item.reactionCount ?? 0,
@@ -250,7 +246,10 @@ const loadPost = async () => {
   post.value = null;
   comments.value = [];
   try {
-    const res = await AxiosApi.get(`/posts/${postId.value}`);
+    const [, res] = await Promise.all([
+      loadReactionTypes(),
+      AxiosApi.get(`/posts/${postId.value}`),
+    ]);
     post.value = mapPost(res.data);
     await loadComments();
   } catch (e) {
@@ -346,12 +345,6 @@ const submitComment = async () => {
   } finally {
     postingComment.value = false;
   }
-};
-
-const savePostSoon = () => {
-  snackbarText.value = "Saving posts comes next.";
-  snackbarColor.value = "green";
-  showSnackbar.value = true;
 };
 
 onMounted(loadPost);

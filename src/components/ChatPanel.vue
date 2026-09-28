@@ -29,11 +29,24 @@
         </div>
       </div>
     </div>
+    <form class="chat-composer" @submit.prevent="sendMessage">
+      <input
+        v-model="draftMessage"
+        class="chat-composer-input"
+        type="text"
+        maxlength="2000"
+        placeholder="Aa"
+        :disabled="loading || sending || !openedChatId"
+      />
+      <button class="chat-composer-send" type="submit" :disabled="!draftMessage.trim() || sending || !openedChatId">
+        Send
+      </button>
+    </form>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 import AxiosApi from "@/plugins/axios";
@@ -45,9 +58,12 @@ const router = useRouter();
 const isDark = computed(() => theme.global.name.value === "dark");
 
 const loading = ref(false);
+const sending = ref(false);
 const otherUser = ref(null);
+const openedChatId = ref(null);
 const messages = ref([]);
 const messagesContainer = ref(null);
+const draftMessage = ref("");
 let openRequestId = 0;
 
 const otherUserName = computed(
@@ -61,8 +77,8 @@ const otherUserImageUrl = computed(
 );
 
 const mapMessage = (item) => ({
-  id: item.id,
-  content: item.content,
+  id: item.id ?? item.Id,
+  content: item.content ?? item.Content,
   isMine: !!(item.isMine ?? item.IsMine),
   time: formatTime(item.createdAt || item.CreatedAt),
 });
@@ -78,14 +94,16 @@ const loadOpenedChat = async (otherUserId) => {
   const requestId = ++openRequestId;
   loading.value = true;
   otherUser.value = null;
+  openedChatId.value = null;
   messages.value = [];
+  draftMessage.value = "";
   try {
     const openedChatRes = await AxiosApi.post("/chats", { userId: otherUserId });
     if (requestId !== openRequestId) return;
     const openedChat = openedChatRes.data;
     otherUser.value = openedChat.otherUser || openedChat.OtherUser;
-    const openedChatId = openedChat.id;
-    const messagesRes = await AxiosApi.get(`/chats/${openedChatId}/messages`);
+    openedChatId.value = openedChat.id;
+    const messagesRes = await AxiosApi.get(`/chats/${openedChatId.value}/messages`);
     if (requestId !== openRequestId) return;
     const list = Array.isArray(messagesRes.data)
       ? messagesRes.data
@@ -103,9 +121,57 @@ const loadOpenedChat = async (otherUserId) => {
   }
 };
 
+const sendMessage = async () => {
+  const content = draftMessage.value.trim();
+  if (!content || !openedChatId.value || sending.value) return;
+  sending.value = true;
+  try {
+    await AxiosApi.post(`/chats/${openedChatId.value}/messages`, { content });
+    draftMessage.value = "";
+    messages.value.push({
+      id: `local-${Date.now()}`,
+      content,
+      isMine: true,
+      time: "Just now",
+    });
+    window.dispatchEvent(new CustomEvent("buzzup-chats-changed"));
+    await scrollMessagesToBottom();
+  } catch (e) {
+    // Axios interceptor already shows the error snackbar
+  } finally {
+    sending.value = false;
+  }
+};
+
 const goToOtherProfile = () => {
   if (!otherUser.value?.id) return;
   router.push(`/users/${otherUser.value.id}`);
+};
+
+const onLiveChatMessage = async (event) => {
+  const incomingMessage = event.detail || {};
+  const incomingChatId = Number(incomingMessage.chatId ?? incomingMessage.ChatId);
+  if (!incomingChatId) return;
+
+  const isOpenChat = incomingChatId === Number(openedChatId.value);
+  if (isOpenChat) {
+    const mappedMessage = mapMessage({
+      ...incomingMessage,
+      isMine: false,
+      IsMine: false,
+    });
+    if (!messages.value.some((existingMessage) => existingMessage.id === mappedMessage.id)) {
+      messages.value.push(mappedMessage);
+      await scrollMessagesToBottom();
+    }
+    try {
+      await AxiosApi.get(`/chats/${incomingChatId}/messages`);
+    } catch (e) {
+      // Axios interceptor already shows the error snackbar
+    }
+  }
+
+  window.dispatchEvent(new CustomEvent("buzzup-chats-changed"));
 };
 
 watch(
@@ -114,7 +180,10 @@ watch(
     if (!otherUserId) {
       openRequestId += 1;
       otherUser.value = null;
+      openedChatId.value = null;
       messages.value = [];
+      draftMessage.value = "";
+      sending.value = false;
       loading.value = false;
       return;
     }
@@ -122,6 +191,13 @@ watch(
   },
   { immediate: true }
 );
+
+onMounted(() => {
+  window.addEventListener("buzzup-chat-message", onLiveChatMessage);
+});
+onUnmounted(() => {
+  window.removeEventListener("buzzup-chat-message", onLiveChatMessage);
+});
 </script>
 
 <style scoped>
@@ -262,6 +338,55 @@ watch(
 
 .chat-bubble-row.mine .chat-bubble-time {
   color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.chat-panel.dark-mode .chat-composer {
+  border-top-color: #334155;
+}
+
+.chat-composer-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 18px;
+  background: #f0f2f5;
+  color: #0f172a;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  outline: none;
+}
+
+.chat-panel.dark-mode .chat-composer-input {
+  background: #2a2a3e;
+  color: #e2e8f0;
+}
+
+.chat-composer-input::placeholder {
+  color: #94a3b8;
+}
+
+.chat-composer-send {
+  border: none;
+  border-radius: 18px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #1a1a2e, #0f3460);
+  cursor: pointer;
+}
+
+.chat-composer-send:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 @media (max-width: 600px) {

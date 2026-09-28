@@ -1,8 +1,14 @@
 <template>
   <div class="settings-page" :class="{ 'dark-mode': isDark }">
     <div class="page-title-row">
-      <v-icon size="22" class="page-title-icon">mdi-cog-outline</v-icon>
-      <span class="page-title-text">Settings</span>
+      <div class="page-title-left">
+        <v-icon size="22" class="page-title-icon">mdi-cog-outline</v-icon>
+        <span class="page-title-text">Settings</span>
+      </div>
+      <v-btn variant="outlined" size="small" rounded class="back-home-btn" @click="goHome">
+        <v-icon size="18" class="mr-1">mdi-home-outline</v-icon>
+        Home
+      </v-btn>
     </div>
 
     <div class="settings-layout">
@@ -114,34 +120,6 @@
             </button>
           </v-form>
         </template>
-
-        <template v-else>
-          <h2 class="panel-title">Activity</h2>
-          <p class="panel-hint">Liked and saved posts will show up here later.</p>
-          <div class="visibility-choices">
-            <button
-              type="button"
-              class="visibility-choice"
-              :class="{ active: activityView === 'liked' }"
-              @click="activityView = 'liked'"
-            >
-              <v-icon size="18">mdi-heart-outline</v-icon>
-              <span>Liked</span>
-            </button>
-            <button
-              type="button"
-              class="visibility-choice"
-              :class="{ active: activityView === 'saved' }"
-              @click="activityView = 'saved'"
-            >
-              <v-icon size="18">mdi-bookmark-outline</v-icon>
-              <span>Saved</span>
-            </button>
-          </div>
-          <div class="activity-empty">
-            {{ activityView === "liked" ? "Liked posts" : "Saved posts" }} — coming soon.
-          </div>
-        </template>
       </section>
     </div>
   </div>
@@ -149,6 +127,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useStore } from "vuex";
 import { useTheme } from "vuetify";
 import { rules } from "@/plugins/validationMessages.js";
@@ -157,16 +136,19 @@ import { updateOwnUser } from "@/services/updateOwnUser";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
 
 const store = useStore();
+const router = useRouter();
 const theme = useTheme();
 const isDark = computed(() => theme.global.name.value === "dark");
+
+const goHome = () => {
+  router.push("/");
+};
 
 const tabs = [
   { id: "profile", label: "Profile settings", icon: "mdi-account-cog-outline" },
   { id: "password", label: "Change password", icon: "mdi-lock-reset" },
-  { id: "activity", label: "Activity", icon: "mdi-history" },
 ];
 const activeTab = ref("profile");
-const activityView = ref("liked");
 
 const isPrivate = ref(false);
 const savingPrivacy = ref(false);
@@ -275,8 +257,28 @@ onMounted(loadPrivacy);
 .page-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   padding: 16px 24px 0;
+}
+
+.page-title-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.back-home-btn {
+  border-color: var(--text-heading) !important;
+  color: var(--text-heading) !important;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.back-home-btn:hover {
+  background: var(--text-heading) !important;
+  color: var(--card-bg) !important;
 }
 
 .page-title-icon {
@@ -425,16 +427,6 @@ onMounted(loadPrivacy);
 .save-btn:disabled {
   opacity: 0.7;
   cursor: default;
-}
-
-.activity-empty {
-  margin-top: 18px;
-  padding: 28px 16px;
-  border-radius: 12px;
-  border: 1px dashed var(--divider);
-  color: var(--text-muted);
-  text-align: center;
-  font-size: 0.9rem;
 }
 
 @media (max-width: 800px) {

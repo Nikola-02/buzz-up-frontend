@@ -165,10 +165,6 @@
                   <v-icon size="20">mdi-comment-processing-outline</v-icon>
                   <span>Comment</span>
                 </button>
-                <button class="action-btn" @click="savePostSoon">
-                  <v-icon size="20">mdi-bookmark-outline</v-icon>
-                  <span>Save</span>
-                </button>
               </div>
             </div>
           </v-col>
@@ -259,7 +255,7 @@ import { useTheme } from "vuetify";
 import { useStore } from "vuex";
 import AxiosApi from "@/plugins/axios";
 import PostReactionButton from "@/components/PostReactionButton.vue";
-import { uniqueReactionEmojis } from "@/services/reactionTypes";
+import { loadReactionTypes, uniqueReactionEmojis } from "@/services/reactionTypes";
 import { formatTime } from "@/services/dates";
 import { countryDisplayName } from "@/services/countries";
 import { openChatWithUser } from "@/services/chatPanel";
@@ -402,7 +398,7 @@ const mapPost = (item) => {
     description: item.description,
     location: item.location,
     feelingName: item.feelingName,
-    feelingEmoji: feeling?.emoji || "",
+    feelingEmoji: feeling?.emoji || (item.feelingIcon?.startsWith?.("mdi-") ? "" : item.feelingIcon) || "",
     image: item.images?.[0] ? `http://localhost:5001/temp/${item.images[0]}` : "",
     time: formatTime(item.createdAt),
     likes: item.reactionCount ?? 0,
@@ -413,12 +409,6 @@ const mapPost = (item) => {
     usedReactionEmojis: uniqueReactionEmojis(item.usedReactionTypeIds),
     comments: item.commentCount ?? 0,
   };
-};
-
-const savePostSoon = () => {
-  snackbarText.value = "Saving posts comes next.";
-  snackbarColor.value = "green";
-  showSnackbar.value = true;
 };
 
 const loadProfile = async () => {
@@ -449,9 +439,12 @@ const loadProfile = async () => {
 
   feedLoading.value = true;
   try {
-    const res = await AxiosApi.get("/posts", {
-      params: { userId: profileId.value, perPage: 20, page: 1 },
-    });
+    const [, res] = await Promise.all([
+      loadReactionTypes(),
+      AxiosApi.get("/posts", {
+        params: { userId: profileId.value, perPage: 20, page: 1 },
+      }),
+    ]);
     posts.value = (res.data.data || res.data.Data || []).map(mapPost);
   } catch (e) {
     posts.value = [];
@@ -481,9 +474,12 @@ const refreshProfileAfterUnfriend = async (userId) => {
 
   feedLoading.value = true;
   try {
-    const res = await AxiosApi.get("/posts", {
-      params: { userId, perPage: 20, page: 1 },
-    });
+    const [, res] = await Promise.all([
+      loadReactionTypes(),
+      AxiosApi.get("/posts", {
+        params: { userId, perPage: 20, page: 1 },
+      }),
+    ]);
     posts.value = (res.data.data || res.data.Data || []).map(mapPost);
   } catch (e) {
     posts.value = [];

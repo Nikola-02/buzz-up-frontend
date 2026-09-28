@@ -199,14 +199,10 @@
             </div>
             <div class="post-actions" @click.stop>
               <PostReactionButton :post="post" @reaction-changed="(next) => Object.assign(post, next)" />
-              <button class="action-btn" @click="goToPost(post.id)">
-                <v-icon size="20">mdi-comment-processing-outline</v-icon>
-                <span>Comment</span>
-              </button>
-              <button class="action-btn" @click="savePostSoon">
-                <v-icon size="20">mdi-bookmark-outline</v-icon>
-                <span>Save</span>
-              </button>
+                <button class="action-btn" @click="goToPost(post.id)">
+                  <v-icon size="20">mdi-comment-processing-outline</v-icon>
+                  <span>Comment</span>
+                </button>
             </div>
           </div>
         </v-col>
@@ -635,7 +631,7 @@ import AxiosApi from "@/plugins/axios";
 import { rules } from "@/plugins/validationMessages.js";
 import CountrySelect from "@/components/CountrySelect.vue";
 import PostReactionButton from "@/components/PostReactionButton.vue";
-import { uniqueReactionEmojis } from "@/services/reactionTypes";
+import { loadReactionTypes, uniqueReactionEmojis } from "@/services/reactionTypes";
 import { formatApiDate, formatRelativeTime } from "@/services/dates";
 import { countryDisplayName, normalizeCountryId } from "@/services/countries";
 import { showSnackbar, snackbarColor, snackbarText } from "../snackbar";
@@ -695,7 +691,7 @@ const mapPost = (item) => {
     description: item.description,
     location: item.location,
     feelingName: item.feelingName,
-    feelingEmoji: feeling?.emoji || "",
+    feelingEmoji: feeling?.emoji || (item.feelingIcon?.startsWith?.("mdi-") ? "" : item.feelingIcon) || "",
     image: item.images?.[0] ? `http://localhost:5001/temp/${item.images[0]}` : "",
     time: formatRelativeTime(item.createdAt),
     likes: item.reactionCount ?? 0,
@@ -714,7 +710,10 @@ const posts = ref([]);
 const loadMyPosts = async () => {
   feedLoading.value = true;
   try {
-    const res = await AxiosApi.get("/posts/my", { params: { perPage: 20, page: 1 } });
+    const [, res] = await Promise.all([
+      loadReactionTypes(),
+      AxiosApi.get("/posts/my", { params: { perPage: 20, page: 1 } }),
+    ]);
     posts.value = (res.data.data || res.data.Data || []).map(mapPost);
   } catch (e) {
     posts.value = [];
@@ -863,12 +862,6 @@ const closeEditPostDialog = () => {
 const openDeletePostDialog = (post) => {
   postToDelete.value = post;
   showDeletePostDialog.value = true;
-};
-
-const savePostSoon = () => {
-  snackbarText.value = "Saving posts comes next.";
-  snackbarColor.value = "green";
-  showSnackbar.value = true;
 };
 
 const pickPostPhoto = () => {

@@ -9,8 +9,26 @@ export const reactionTypes = [
   { id: 6, name: "Angry", emoji: "😠" },
 ];
 
-export const reactionEmojiByTypeId = (typeId) =>
-  reactionTypes.find((type) => type.id === Number(typeId))?.emoji || "👍";
+const isMdiName = (value) =>
+  typeof value === "string" && value.trim().toLowerCase().startsWith("mdi-");
+
+const hardcodedEmoji = (typeId) =>
+  reactionTypes.find((type) => type.id === Number(typeId))?.emoji || "";
+
+const pickEmoji = (...candidates) => {
+  for (const candidate of candidates) {
+    if (candidate && !isMdiName(candidate)) return candidate;
+  }
+  return "";
+};
+
+export const reactionEmojiByTypeId = (typeId) => {
+  const id = Number(typeId);
+  const fromCache = cache?.find((type) => Number(type.id) === id);
+  return (
+    pickEmoji(fromCache?.emoji, fromCache?.icon, hardcodedEmoji(id)) || "👍"
+  );
+};
 
 export const uniqueReactionEmojis = (typeIds) => {
   const seen = [];
@@ -30,9 +48,11 @@ export const loadReactionTypes = async () => {
   pending = AxiosApi.get("/reactionTypes")
     .then((res) => {
       const types = Array.isArray(res.data) ? res.data : res.data?.data || [];
-      cache = (types.length ? types : reactionTypes).map((type) => ({
+      const source = types.length ? types : reactionTypes;
+      cache = source.map((type) => ({
         ...type,
-        emoji: reactionEmojiByTypeId(type.id),
+        emoji:
+          pickEmoji(type.emoji, type.icon, hardcodedEmoji(type.id)) || "👍",
       }));
       return cache;
     })

@@ -43,11 +43,15 @@
                 :class="{ 'id-cell': col.key === 'id' }"
               >
                 <img
-                  v-if="col.type === 'image'"
+                  v-if="col.type === 'image' && cellValue(col, item)"
                   :src="cellValue(col, item)"
                   :alt="`${item.username || 'User'} image`"
                   class="table-avatar"
                 />
+                <span
+                  v-else-if="col.type === 'image'"
+                  class="table-image-empty"
+                >{{ col.emptyText || "/" }}</span>
                 <v-chip
                   v-else-if="col.chip"
                   :color="col.chip.colorMap?.[cellValue(col, item)] || col.chip.default"
@@ -79,27 +83,14 @@
       </div>
 
       <div class="table-pagination" v-if="!loading && totalCount > 0">
-        <div class="pagination-summary">
-          Showing {{ paginationStart }}-{{ paginationEnd }} of {{ totalCount }}
-        </div>
-        <div class="pagination-controls">
-          <v-select
-            :model-value="perPage"
-            :items="perPageOptions"
-            density="compact"
-            variant="outlined"
-            hide-details
-            class="per-page-select"
-            @update:model-value="onPerPageChange"
-          ></v-select>
-          <v-pagination
-            :model-value="page"
-            :length="totalPages"
-            :total-visible="7"
-            density="comfortable"
-            @update:model-value="setPage"
-          ></v-pagination>
-        </div>
+        <AppPagination
+          :page="page"
+          :per-page="perPage"
+          :total-count="totalCount"
+          show-per-page
+          @update:page="setPage"
+          @update:perPage="onPerPageChange"
+        />
       </div>
     </div>
 
@@ -124,7 +115,10 @@
                     v-model="formData[field.key]"
                     :placeholder="fieldPlaceholder(field)"
                     :rules="fieldRules(field)"
-                    :items="field.options"
+                    :items="selectItems(field)"
+                    item-title="title"
+                    item-value="value"
+                    :clearable="!!field.clearable"
                     variant="outlined"
                     density="compact"
                     rounded="lg"
@@ -242,9 +236,10 @@ import { ref, computed, watch, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import { useTheme } from "vuetify";
 import AxiosApi from "@/plugins/axios";
-import { adminTables } from "@/config/adminTables.js";
+import { adminTables, postFeelingEmojiById } from "@/config/adminTables.js";
 import { rules } from "@/plugins/validationMessages.js";
 import CountrySelect from "@/components/CountrySelect.vue";
+import AppPagination from "@/components/AppPagination.vue";
 import { normalizeCountryId } from "@/services/countries";
 
 const route = useRoute();
@@ -261,7 +256,7 @@ const search = ref("");
 const page = ref(1);
 const perPage = ref(10);
 const totalCount = ref(0);
-const perPageOptions = [10, 20, 50, 100];
+const selectOptions = ref({});
 let searchDebounceTimer = null;
 
 const cellValue = (col, item) => {
@@ -270,21 +265,6 @@ const cellValue = (col, item) => {
 };
 
 const filteredItems = computed(() => items.value);
-
-const totalPages = computed(() => {
-  if (!totalCount.value) return 1;
-  return Math.max(1, Math.ceil(totalCount.value / perPage.value));
-});
-
-const paginationStart = computed(() => {
-  if (!totalCount.value) return 0;
-  return (page.value - 1) * perPage.value + 1;
-});
-
-const paginationEnd = computed(() => {
-  if (!totalCount.value) return 0;
-  return Math.min(page.value * perPage.value, totalCount.value);
-});
 
 const mapResponseToPagination = (data) => {
   if (Array.isArray(data)) {
@@ -333,7 +313,7 @@ const fetchItems = async () => {
         keyword: search.value?.trim() || undefined,
         page: page.value,
         perPage: perPage.value,
-        ...(tableName.value === "users" ? { adminView: true } : {}),
+        ...((tableName.value === "users" || tableName.value === "posts") ? { adminView: true } : {}),
       },
     });
     const mapped = mapResponseToPagination(res.data);
@@ -349,7 +329,64 @@ const fetchItems = async () => {
   }
 };
 
-onMounted(fetchItems);
+const selectItems = (field) => {
+  if (Array.isArray(field.options) && field.options.length) {
+    return field.options;
+  }
+  if (field.optionsApi) {
+    return selectOptions.value[field.optionsApi] || [];
+  }
+  return [];
+};
+
+const selectGlyph = (row, api) => {
+  if (api === "/feelingTypes") {
+    return postFeelingEmojiById[row.id] || selectGlyphFromIcon(row.icon);
+  }
+  return selectGlyphFromIcon(row.icon);
+};
+
+const selectGlyphFromIcon = (icon) => {
+  if (!icon) return "";
+  const text = String(icon);
+  return text.startsWith("mdi-") ? "" : text;
+};
+
+const selectOptionTitle = (row, api) => {
+  const glyph = selectGlyph(row, api);
+  const name = row.name || String(row.id);
+  return glyph ? `${glyph} ${name}`.trim() : name;
+};
+
+const loadSelectOptions = async () => {
+  if (!config.value?.form?.fields) {
+    selectOptions.value = {};
+    return;
+  }
+
+  const apis = [...new Set(config.value.form.fields.filter((f) => f.optionsApi).map((f) => f.optionsApi))];
+  const next = {};
+  await Promise.all(
+    apis.map(async (api) => {
+      try {
+        const res = await AxiosApi.get(api);
+        const mapped = mapResponseToPagination(res.data);
+        next[api] = mapped.rows.map((row) => ({
+          value: row.id,
+          title: selectOptionTitle(row, api),
+        }));
+      } catch (e) {
+        next[api] = [];
+      }
+    })
+  );
+  selectOptions.value = next;
+};
+
+onMounted(() => {
+  loadSelectOptions();
+  fetchItems();
+});
 
 watch(tableName, () => {
   search.value = "";
@@ -359,6 +396,7 @@ watch(tableName, () => {
   totalCount.value = 0;
   showFormDialog.value = false;
   showDeleteDialog.value = false;
+  loadSelectOptions();
   fetchItems();
 });
 
@@ -533,11 +571,19 @@ const openEditDialog = (item) => {
       const raw =
         f.key === "countryId" ? item.countryId ?? item.CountryId : item[f.key];
       data[f.key] = normalizeCountryId(raw);
+    } else if (f.type === "select") {
+      const raw = item[f.key];
+      data[f.key] = raw === undefined || raw === null || raw === "" ? null : raw;
     } else {
       data[f.key] = item[f.key] ?? "";
     }
   });
-  existingImageFileName.value = item.image || null;
+  if (tableName.value === "posts") {
+    const postImages = item.images;
+    existingImageFileName.value = (Array.isArray(postImages) && postImages[0]) || null;
+  } else {
+    existingImageFileName.value = item.image || null;
+  }
   formData.value = data;
   showFormDialog.value = true;
 };
@@ -549,6 +595,18 @@ const saveItem = async () => {
   saving.value = true;
   try {
     const payload = { ...formData.value };
+
+    if (editUploadedImageFileName.value) {
+      payload.image = editUploadedImageFileName.value;
+    }
+
+    config.value.form.fields.forEach((f) => {
+      if (f.type !== "select") return;
+      const v = payload[f.key];
+      if (v === "" || v === undefined) {
+        payload[f.key] = null;
+      }
+    });
 
     if (tableName.value === "users" && isEditing.value && editingItem.value) {
       const src = editingItem.value;
@@ -762,29 +820,14 @@ const deleteItem = async () => {
   background: var(--table-header-bg);
 }
 
+.table-image-empty {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
 .table-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 12px 16px;
+  padding: 4px 16px 10px;
   border-top: 1px solid var(--divider);
-}
-
-.pagination-summary {
-  font-size: 0.82rem;
-  color: var(--text-secondary);
-}
-
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.per-page-select {
-  width: 92px;
 }
 
 .actions-col {

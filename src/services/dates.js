@@ -7,10 +7,16 @@ export const parseApiDate = (value) => {
 
 export const formatRelativeTime = (value) => {
   if (!value) return "";
-  const date = parseApiDate(value);
+  let date = parseApiDate(value);
   if (!date || Number.isNaN(date.getTime())) return "";
-  const diffMs = Date.now() - date.getTime();
-  const minutes = Math.floor(diffMs / 60000);
+  let diffMs = Date.now() - date.getTime();
+  const raw = String(value);
+  if (diffMs < 0 && !/[zZ]|[+-]\d{2}:\d{2}$/.test(raw)) {
+    date = new Date(raw);
+    if (!date || Number.isNaN(date.getTime())) return "";
+    diffMs = Date.now() - date.getTime();
+  }
+  const minutes = Math.floor(Math.max(0, diffMs) / 60000);
   if (minutes < 1) return "Just now";
   if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.floor(minutes / 60);
