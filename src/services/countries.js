@@ -46,7 +46,7 @@ function normalizeList(raw) {
 }
 
 export async function fetchCountries() {
-  const res = await AxiosApi.get("/countries");
+  const res = await AxiosApi.get("/countries", { params: { perPage: 500 } });
   const list = normalizeList(res.data);
   const byId = new Map();
   for (const c of list) {

@@ -22,6 +22,40 @@
       </div>
     </div>
 
+    <div class="feed-tools" :class="{ open: feedToolsOpen }">
+      <button
+        v-if="!feedToolsOpen"
+        type="button"
+        class="feed-tools-toggle"
+        @click="openFeedTools"
+      >
+        <v-icon size="18">mdi-magnify</v-icon>
+        <span>Search posts</span>
+      </button>
+      <template v-else>
+        <v-text-field
+          ref="feedSearchField"
+          v-model="feedKeywordInput"
+          placeholder="Search posts..."
+          variant="outlined"
+          density="compact"
+          hide-details
+          rounded="lg"
+          prepend-inner-icon="mdi-magnify"
+          clearable
+          class="feed-search-input"
+          @update:model-value="onFeedKeywordTyped"
+        />
+        <button type="button" class="feed-sort-btn" @click="toggleFeedSort">
+          <v-icon size="18">{{ feedSort === "asc" ? "mdi-sort-calendar-ascending" : "mdi-sort-calendar-descending" }}</v-icon>
+          <span>{{ feedSort === "asc" ? "Oldest" : "Newest" }}</span>
+        </button>
+        <button type="button" class="feed-tools-close" aria-label="Close search" @click="closeFeedTools">
+          <v-icon size="18">mdi-close</v-icon>
+        </button>
+      </template>
+    </div>
+
     <v-dialog v-model="showCreateDialog" max-width="520" :persistent="posting">
       <v-card class="create-dialog" :class="{ 'dark-mode': isDark }">
         <div class="create-dialog-header">
@@ -218,7 +252,7 @@
     </v-dialog>
 
     <div v-if="feedLoading && !posts.length" class="feed-empty">Loading posts...</div>
-    <div v-else-if="!posts.length" class="feed-empty">No posts yet. Create the first one.</div>
+    <div v-else-if="!posts.length" class="feed-empty">{{ feedEmptyText }}</div>
 
     <!-- Posts feed -->
     <div
@@ -382,7 +416,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { useRouter } from "vue-router";
 import { useTheme } from "vuetify";
 import { useStore } from "vuex";
@@ -404,6 +438,51 @@ const posts = ref([]);
 const feedPage = ref(1);
 const feedPerPage = 10;
 const feedTotalCount = ref(0);
+const feedToolsOpen = ref(false);
+const feedKeywordInput = ref("");
+const feedKeyword = ref("");
+const feedSort = ref("desc");
+const feedSearchField = ref(null);
+let feedSearchTimer = null;
+
+const feedEmptyText = computed(() =>
+  feedKeyword.value.trim()
+    ? "No posts match your search."
+    : "No posts yet. Create the first one."
+);
+
+const openFeedTools = async () => {
+  feedToolsOpen.value = true;
+  await nextTick();
+  feedSearchField.value?.focus?.();
+};
+
+const closeFeedTools = () => {
+  feedToolsOpen.value = false;
+  if (feedSearchTimer) {
+    clearTimeout(feedSearchTimer);
+    feedSearchTimer = null;
+  }
+};
+
+const applyFeedSearch = (value) => {
+  const nextKeyword = (value || "").trim();
+  if (nextKeyword === feedKeyword.value) return;
+  feedKeyword.value = nextKeyword;
+  feedPage.value = 1;
+  loadFeed();
+};
+
+const onFeedKeywordTyped = (value) => {
+  if (feedSearchTimer) clearTimeout(feedSearchTimer);
+  feedSearchTimer = setTimeout(() => applyFeedSearch(value), 300);
+};
+
+const toggleFeedSort = () => {
+  feedSort.value = feedSort.value === "asc" ? "desc" : "asc";
+  feedPage.value = 1;
+  loadFeed();
+};
 const showCreateDialog = ref(false);
 const showDeleteDialog = ref(false);
 const editingPostId = ref(null);
@@ -571,7 +650,12 @@ const loadFeed = async ({ scrollToTop } = {}) => {
     const [, res] = await Promise.all([
       loadReactionTypes(),
       AxiosApi.get("/posts", {
-        params: { perPage: feedPerPage, page: feedPage.value },
+        params: {
+          perPage: feedPerPage,
+          page: feedPage.value,
+          keyword: feedKeyword.value || undefined,
+          sort: feedSort.value,
+        },
       }),
     ]);
     const payload = res.data || {};
@@ -857,6 +941,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener("click", closeAuthorPeek);
   window.removeEventListener("buzzup-friends-changed", onFriendsChanged);
+  if (feedSearchTimer) clearTimeout(feedSearchTimer);
 });
 
 const deletePost = async () => {
@@ -912,6 +997,73 @@ const deletePost = async () => {
   border-radius: 16px;
   padding: 20px;
   transition: all 0.3s ease;
+}
+
+.feed-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 16px;
+}
+
+.feed-tools.open {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+
+.feed-tools-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.feed-tools-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.feed-search-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-search-input :deep(.v-field) {
+  font-size: 0.88rem;
+  background: var(--hover-bg) !important;
+}
+
+.feed-sort-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 12px;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #1a1a2e, #0f3460);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.feed-tools-close {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
 }
 
 .create-post-top {
