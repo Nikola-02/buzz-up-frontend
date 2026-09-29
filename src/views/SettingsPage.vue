@@ -122,6 +122,12 @@
         </template>
       </section>
     </div>
+
+    <SnackbarComponent
+      v-model:show="showSnackbar"
+      :color="snackbarColor"
+      :text="snackbarText"
+    />
   </div>
 </template>
 
@@ -206,7 +212,7 @@ const savePassword = async () => {
   if (!valid) return;
   if (!newPassword.value) {
     snackbarText.value = "Enter a new password to change it.";
-    snackbarColor.value = "green";
+    snackbarColor.value = "red";
     showSnackbar.value = true;
     return;
   }
@@ -217,7 +223,7 @@ const savePassword = async () => {
     confirmPassword.value = "";
     showPassword.value = false;
     showConfirm.value = false;
-    snackbarText.value = "Password updated.";
+    snackbarText.value = "Password changed successfully.";
     snackbarColor.value = "green";
     showSnackbar.value = true;
   } catch (e) {
